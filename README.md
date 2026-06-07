@@ -94,6 +94,9 @@ auto-injects the latest summary + last wiki note + index. Built from `SessionEnd
 - 워커 인증: 잘못된 `ANTHROPIC_API_KEY` 제거 후 OAuth 사용.
 - 재귀 방지: 워커가 띄운 세션은 `CLAUDE_WIKI_CHILD` 로 훅 no-op.
 - Sonnet 출력 분리: `@@@TITLE@@@` / `@@@HANDOFF@@@` / `@@@WIKI@@@` 줄단위 마커.
+- 품질 자기검증: 마커 부족·빈 출력·타임아웃이면 **1회만 재시도**, 그래도 실패하면 폴백 + frontmatter에 `quality: degraded` 기록. 새 세션 복원 시 degraded면 "원본 확인 권장" 경고 한 줄을 함께 띄움.
+- 요약 retention: `summary/` 는 최신 10개만 두고 나머지는 `summary/_archive/` 로 **이동(삭제 아님)**. 개수는 워커의 `SUMMARY_KEEP` 상수로 조정.
+- INDEX 정합성: 갱신 시 실제 파일이 없는 `[[링크]]`(ghost)는 자동 제거(파일 자체는 안 건드림). 미색인 파일(orphan)은 로그만 남김.
 - macOS/Linux는 `cloop`을 bash/zsh 함수로, 경로를 `~/.claude/...` 로 바꾸면 동일하게 동작.
 
 ## License

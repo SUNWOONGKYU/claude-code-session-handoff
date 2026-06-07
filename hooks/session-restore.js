@@ -9,6 +9,7 @@
  *   ② 직전 위키 노트 : <cwd>/sessions/wiki/*.md      (INDEX 제외, 가장 최신 1개 본문 전체)
  *   ③ 위키 인덱스    : <cwd>/sessions/wiki/INDEX.md  (쌓인 지식 목록 — 한 줄 설명 포함)
  * 셋 다 없고 raw만 있으면 → 최신 raw 포인터.
+ * 요약 frontmatter가 quality: degraded면 주입 시 품질 경고 한 줄을 함께 출력.
  *
  * source=clear 면 주입 생략. CLAUDE_WIKI_CHILD(위키 워커 자식)면 생략.
  * 절대 차단하지 않음(exit 0).
@@ -50,8 +51,12 @@ function finish() {
     // ① 이어가기 요약 — summary 폴더의 '가장 최신' 1개만 읽음 (누적되지만 최신만 참조)
     const latestSummary = newestIn(summaryDir, '.md');
     if (latestSummary) {
+      const body = fs.readFileSync(latestSummary, 'utf8').trim();
       out.push('=== 직전 세션 이어가기 요약 (자동 주입) ===');
-      out.push(fs.readFileSync(latestSummary, 'utf8').trim());
+      if (/^quality:\s*degraded/m.test(body)) {
+        out.push('(주의: 이 요약은 자동증류 품질이 낮음 — sessions/raw 원본 확인 권장)');
+      }
+      out.push(body);
     }
 
     // ② 직전 위키 노트 (본문 전체) — INDEX.md 제외, 가장 최신
