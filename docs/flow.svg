@@ -58,7 +58,8 @@
   <text x="433" y="1016" text-anchor="middle" fill="#1e40af" font-size="15">요약·위키·원본 누적</text>
   <rect x="548" y="952" width="198" height="86" rx="14" fill="#fef2f2" stroke="#fca5a5"/>
   <text x="647" y="990" text-anchor="middle" fill="#b91c1c" font-size="22" font-weight="bold">비용 절감</text>
-  <text x="647" y="1016" text-anchor="middle" fill="#991b1b" font-size="15">요약+인덱스만 읽음</text>
+  <text x="647" y="1009" text-anchor="middle" fill="#991b1b" font-size="14">요약+직전위키+인덱스</text>
+  <text x="647" y="1028" text-anchor="middle" fill="#991b1b" font-size="14">만 읽음</text>
   <rect x="762" y="952" width="198" height="86" rx="14" fill="#f5f3ff" stroke="#c4b5fd"/>
   <text x="861" y="990" text-anchor="middle" fill="#6d28d9" font-size="22" font-weight="bold">지식 축적</text>
   <text x="861" y="1016" text-anchor="middle" fill="#5b21b6" font-size="15">옵시디언 위키+INDEX</text>
