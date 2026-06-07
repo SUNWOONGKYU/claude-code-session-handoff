@@ -1,23 +1,18 @@
 {
-  "_comment": "기존 ~/.claude/settings.json 의 hooks 안에 아래 SessionStart / SessionEnd 블록을 병합하세요. node 경로는 본인 사용자명에 맞게 수정.",
+  "_설명": "기존 ~/.claude/settings.json 의 hooks 안에 아래 SessionStart / SessionEnd 블록을 병합하세요. node 경로의 사용자명을 본인 환경에 맞게 수정.",
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "node \"c:/Users/<사용자명>/.claude/hooks/session-restore.js\""
-          }
+          { "type": "command", "command": "node \"c:/Users/<사용자명>/.claude/hooks/session-restore.js\"" }
         ]
       }
     ],
     "SessionEnd": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "node \"c:/Users/<사용자명>/.claude/hooks/session-save-raw.js\""
-          }
+          { "type": "command", "command": "node \"c:/Users/<사용자명>/.claude/hooks/session-save-raw.js\"" },
+          { "type": "command", "command": "node \"c:/Users/<사용자명>/.claude/hooks/session-to-wiki.js\"" }
         ]
       }
     ]

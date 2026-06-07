@@ -33,6 +33,8 @@ function finish() {
   if (done) return;
   done = true;
   try {
+    if (process.env.CLAUDE_WIKI_CHILD) return process.exit(0); // 위키 워커가 띄운 세션 — 건너뜀
+
     let d = {};
     try { d = JSON.parse(buf || '{}'); } catch {}
 

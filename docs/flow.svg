@@ -1,107 +1,67 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1240" viewBox="0 0 1080 1240" font-family="'Malgun Gothic','Apple SD Gothic Neo',sans-serif">
-  <!-- 배경 -->
-  <rect x="0" y="0" width="1080" height="1240" fill="#f1f5f9"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1110" viewBox="0 0 1080 1110" font-family="'Malgun Gothic','Apple SD Gothic Neo',sans-serif">
+  <rect x="0" y="0" width="1080" height="1110" fill="#f1f5f9"/>
 
   <!-- 헤더 -->
-  <rect x="0" y="0" width="1080" height="160" fill="#0f172a"/>
-  <text x="540" y="70" text-anchor="middle" fill="#ffffff" font-size="44" font-weight="bold">컴팩트는 그만 — 저장하고 가볍게 다시 시작</text>
-  <text x="540" y="118" text-anchor="middle" fill="#93c5fd" font-size="25">세션 핸드오프 + 옵시디언 위키 · SessionEnd / SessionStart 훅</text>
+  <rect x="0" y="0" width="1080" height="150" fill="#0f172a"/>
+  <text x="540" y="66" text-anchor="middle" fill="#ffffff" font-size="42" font-weight="bold">컴팩트는 그만 — /exit 하나로 저장·요약·위키 자동</text>
+  <text x="540" y="112" text-anchor="middle" fill="#93c5fd" font-size="24">Claude Code 세션 핸드오프 · SessionEnd / SessionStart 훅 + 옵시디언 위키</text>
 
-  <!-- STEP 1 -->
-  <rect x="120" y="180" width="840" height="90" rx="16" fill="#ffffff" stroke="#e2e8f0"/>
-  <rect x="120" y="180" width="12" height="90" rx="6" fill="#ef4444"/>
-  <circle cx="185" cy="225" r="28" fill="#ef4444"/>
-  <text x="185" y="235" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="bold">1</text>
-  <text x="236" y="220" fill="#0f172a" font-size="28" font-weight="bold">대화가 점점 무거워짐</text>
-  <text x="236" y="252" fill="#64748b" font-size="20">컨텍스트(기억)가 가득 → 느려지고 흐려짐</text>
-  <line x1="540" y1="270" x2="540" y2="300" stroke="#94a3b8" stroke-width="4"/>
-  <polygon points="528,298 552,298 540,310" fill="#94a3b8"/>
+  <!-- A -->
+  <rect x="120" y="164" width="840" height="64" rx="14" fill="#ffffff" stroke="#e2e8f0"/>
+  <rect x="120" y="164" width="12" height="64" rx="6" fill="#ef4444"/>
+  <text x="546" y="204" text-anchor="middle" fill="#0f172a" font-size="26" font-weight="bold">① 컨텍스트가 무거워짐 — 느려지고 흐려짐</text>
+  <line x1="540" y1="228" x2="540" y2="246" stroke="#94a3b8" stroke-width="4"/><polygon points="528,244 552,244 540,256" fill="#94a3b8"/>
 
-  <!-- STEP 2 : /마무리 = 요약 저장 -->
-  <rect x="120" y="304" width="840" height="90" rx="16" fill="#ffffff" stroke="#e2e8f0"/>
-  <rect x="120" y="304" width="12" height="90" rx="6" fill="#3b82f6"/>
-  <circle cx="185" cy="349" r="28" fill="#3b82f6"/>
-  <text x="185" y="359" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="bold">2</text>
-  <rect x="724" y="316" width="220" height="30" rx="15" fill="#eff6ff" stroke="#3b82f6"/>
-  <text x="834" y="337" text-anchor="middle" fill="#1d4ed8" font-size="18" font-weight="bold">결과물: 요약 .md</text>
-  <text x="236" y="344" fill="#0f172a" font-size="28" font-weight="bold">/마무리  →  요약 저장</text>
-  <text x="236" y="376" fill="#64748b" font-size="20">AI가 '한 장 요약'을 만들어 sessions/raw + LATEST.md 에 저장</text>
-  <line x1="540" y1="394" x2="540" y2="424" stroke="#94a3b8" stroke-width="4"/>
-  <polygon points="528,422 552,422 540,434" fill="#94a3b8"/>
+  <!-- B -->
+  <rect x="120" y="250" width="840" height="64" rx="14" fill="#ffffff" stroke="#e2e8f0"/>
+  <rect x="120" y="250" width="12" height="64" rx="6" fill="#3b82f6"/>
+  <text x="546" y="290" text-anchor="middle" fill="#0f172a" font-size="26" font-weight="bold">② /exit — 단 하나의 명령 (Ctrl+D 대체)</text>
+  <line x1="540" y1="314" x2="540" y2="332" stroke="#94a3b8" stroke-width="4"/><polygon points="528,330 552,330 540,342" fill="#94a3b8"/>
 
-  <!-- STEP 3 : /exit = 원본 저장 (SessionEnd) -->
-  <rect x="120" y="428" width="840" height="90" rx="16" fill="#ffffff" stroke="#e2e8f0"/>
-  <rect x="120" y="428" width="12" height="90" rx="6" fill="#f59e0b"/>
-  <circle cx="185" cy="473" r="28" fill="#f59e0b"/>
-  <text x="185" y="483" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="bold">3</text>
-  <rect x="700" y="440" width="244" height="30" rx="15" fill="#fff7ed" stroke="#f59e0b"/>
-  <text x="822" y="461" text-anchor="middle" fill="#b45309" font-size="18" font-weight="bold">SessionEnd 훅 · 원본 .jsonl</text>
-  <text x="236" y="468" fill="#0f172a" font-size="28" font-weight="bold">/exit  →  원본 저장</text>
-  <text x="236" y="500" fill="#64748b" font-size="20">대화록 원본(.jsonl)을 sessions/raw 에 자동 백업 (안전망)</text>
-  <line x1="540" y1="518" x2="540" y2="548" stroke="#94a3b8" stroke-width="4"/>
-  <polygon points="528,546 552,546 540,558" fill="#94a3b8"/>
+  <!-- C 그룹: SessionEnd 자동 저장 -->
+  <rect x="120" y="336" width="840" height="204" rx="16" fill="#fffbeb" stroke="#fcd34d"/>
+  <rect x="120" y="336" width="12" height="204" rx="6" fill="#f59e0b"/>
+  <text x="160" y="376" fill="#b45309" font-size="26" font-weight="bold">③ /exit 하면 자동 저장 (SessionEnd · 백그라운드)</text>
+  <circle cx="172" cy="408" r="5" fill="#f59e0b"/><text x="190" y="415" fill="#0f172a" font-size="22">원본 대화(.jsonl) → <tspan font-weight="bold">sessions/raw</tspan></text>
+  <circle cx="172" cy="446" r="5" fill="#f59e0b"/><text x="190" y="453" fill="#0f172a" font-size="22">이어가기 요약 → <tspan font-weight="bold">sessions/summary</tspan> (누적)</text>
+  <circle cx="172" cy="484" r="5" fill="#f59e0b"/><text x="190" y="491" fill="#0f172a" font-size="22">위키 노트 + INDEX → <tspan font-weight="bold">sessions/wiki</tspan> (누적, [[링크]])</text>
+  <text x="190" y="524" fill="#92400e" font-size="18">※ 요약·위키·INDEX는 백그라운드 AI(Sonnet)가 자동 생성 — 화면 안 멈춤</text>
+  <line x1="540" y1="540" x2="540" y2="558" stroke="#94a3b8" stroke-width="4"/><polygon points="528,556 552,556 540,568" fill="#94a3b8"/>
 
-  <!-- STEP 4 : cloop -->
-  <rect x="120" y="552" width="840" height="90" rx="16" fill="#ffffff" stroke="#e2e8f0"/>
-  <rect x="120" y="552" width="12" height="90" rx="6" fill="#8b5cf6"/>
-  <circle cx="185" cy="597" r="28" fill="#8b5cf6"/>
-  <text x="185" y="607" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="bold">4</text>
-  <text x="236" y="592" fill="#0f172a" font-size="28" font-weight="bold">cloop 자동 재접속</text>
-  <text x="236" y="624" fill="#64748b" font-size="20">새 세션이 알아서 다시 켜짐 (가벼운 상태로 출발)</text>
-  <line x1="540" y1="642" x2="540" y2="672" stroke="#94a3b8" stroke-width="4"/>
-  <polygon points="528,670 552,670 540,682" fill="#94a3b8"/>
+  <!-- D -->
+  <rect x="120" y="562" width="840" height="64" rx="14" fill="#ffffff" stroke="#e2e8f0"/>
+  <rect x="120" y="562" width="12" height="64" rx="6" fill="#8b5cf6"/>
+  <text x="546" y="602" text-anchor="middle" fill="#0f172a" font-size="26" font-weight="bold">④ cloop — 새 세션 자동 재접속</text>
+  <line x1="540" y1="626" x2="540" y2="644" stroke="#94a3b8" stroke-width="4"/><polygon points="528,642 552,642 540,654" fill="#94a3b8"/>
 
-  <!-- STEP 5 : 요약 주입 (SessionStart) -->
-  <rect x="120" y="676" width="840" height="90" rx="16" fill="#ffffff" stroke="#e2e8f0"/>
-  <rect x="120" y="676" width="12" height="90" rx="6" fill="#f59e0b"/>
-  <circle cx="185" cy="721" r="28" fill="#f59e0b"/>
-  <text x="185" y="731" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="bold">5</text>
-  <rect x="724" y="688" width="220" height="30" rx="15" fill="#fff7ed" stroke="#f59e0b"/>
-  <text x="834" y="709" text-anchor="middle" fill="#b45309" font-size="18" font-weight="bold">SessionStart 훅</text>
-  <text x="236" y="716" fill="#0f172a" font-size="28" font-weight="bold">요약 자동 주입</text>
-  <text x="236" y="748" fill="#64748b" font-size="20">시작하자마자 직전 요약(LATEST.md)을 컨텍스트에 넣어줌</text>
-  <line x1="540" y1="766" x2="540" y2="796" stroke="#94a3b8" stroke-width="4"/>
-  <polygon points="528,794 552,794 540,806" fill="#94a3b8"/>
+  <!-- E 그룹: SessionStart 자동 주입 -->
+  <rect x="120" y="648" width="840" height="188" rx="16" fill="#f0fdf4" stroke="#86efac"/>
+  <rect x="120" y="648" width="12" height="188" rx="6" fill="#16a34a"/>
+  <text x="160" y="688" fill="#15803d" font-size="26" font-weight="bold">⑤ 새 세션이 자동으로 읽음 (SessionStart · 가볍게)</text>
+  <circle cx="172" cy="722" r="5" fill="#16a34a"/><text x="190" y="729" fill="#0f172a" font-size="22"><tspan font-weight="bold">최신 이어가기 요약</tspan> (전체) — 직전에 뭐 했나</text>
+  <circle cx="172" cy="760" r="5" fill="#16a34a"/><text x="190" y="767" fill="#0f172a" font-size="22"><tspan font-weight="bold">직전 위키 노트 본문</tspan> (전체) — 직전 지식·결정</text>
+  <circle cx="172" cy="798" r="5" fill="#16a34a"/><text x="190" y="805" fill="#0f172a" font-size="22"><tspan font-weight="bold">위키 INDEX</tspan> — 쌓인 지식 지도(필요한 것만 펼쳐 읽음)</text>
+  <line x1="540" y1="836" x2="540" y2="854" stroke="#94a3b8" stroke-width="4"/><polygon points="528,852 552,852 540,864" fill="#94a3b8"/>
 
-  <!-- STEP 6 : 이어서 작업 -->
-  <rect x="120" y="800" width="840" height="90" rx="16" fill="#ffffff" stroke="#e2e8f0"/>
-  <rect x="120" y="800" width="12" height="90" rx="6" fill="#22c55e"/>
-  <circle cx="185" cy="845" r="28" fill="#22c55e"/>
-  <text x="185" y="855" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="bold">6</text>
-  <text x="236" y="840" fill="#0f172a" font-size="28" font-weight="bold">가볍게 이어서 작업</text>
-  <text x="236" y="872" fill="#64748b" font-size="20">적은 토큰으로 이전 맥락 즉시 복구</text>
-  <line x1="540" y1="890" x2="540" y2="908" stroke="#7c3aed" stroke-width="4"/>
-  <polygon points="528,906 552,906 540,918" fill="#7c3aed"/>
-
-  <!-- 축적 레인 : 옵시디언 위키 -->
-  <rect x="120" y="922" width="840" height="120" rx="16" fill="#f5f3ff" stroke="#c4b5fd"/>
-  <rect x="120" y="922" width="12" height="120" rx="6" fill="#7c3aed"/>
-  <circle cx="185" cy="967" r="28" fill="#7c3aed"/>
-  <text x="185" y="978" text-anchor="middle" fill="#ffffff" font-size="30" font-weight="bold">+</text>
-  <rect x="724" y="934" width="220" height="30" rx="15" fill="#ede9fe" stroke="#7c3aed"/>
-  <text x="834" y="955" text-anchor="middle" fill="#6d28d9" font-size="18" font-weight="bold">Obsidian Vault</text>
-  <text x="236" y="964" fill="#5b21b6" font-size="28" font-weight="bold">쌓이면 → 옵시디언(Obsidian) 위키로 흡수</text>
-  <text x="236" y="998" fill="#6d28d9" font-size="20">세션 요약들이 위키링크로 서로 연결되고,</text>
-  <text x="236" y="1026" fill="#6d28d9" font-size="20">프로젝트 지식이 '검색·연결되는 베이스'로 영구 축적</text>
+  <!-- F -->
+  <rect x="120" y="858" width="840" height="64" rx="14" fill="#ffffff" stroke="#e2e8f0"/>
+  <rect x="120" y="858" width="12" height="64" rx="6" fill="#0d9488"/>
+  <text x="546" y="898" text-anchor="middle" fill="#0f172a" font-size="26" font-weight="bold">⑥ 가볍게 이어서 작업</text>
 
   <!-- 혜택 4종 -->
-  <rect x="120" y="1066" width="198" height="84" rx="14" fill="#ecfdf5" stroke="#86efac"/>
-  <text x="219" y="1104" text-anchor="middle" fill="#15803d" font-size="23" font-weight="bold">빠름</text>
-  <text x="219" y="1130" text-anchor="middle" fill="#166534" font-size="15">가벼운 컨텍스트</text>
+  <rect x="120" y="952" width="198" height="86" rx="14" fill="#ecfdf5" stroke="#86efac"/>
+  <text x="219" y="990" text-anchor="middle" fill="#15803d" font-size="22" font-weight="bold">빠름</text>
+  <text x="219" y="1016" text-anchor="middle" fill="#166534" font-size="15">가벼운 컨텍스트</text>
+  <rect x="334" y="952" width="198" height="86" rx="14" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="433" y="990" text-anchor="middle" fill="#1d4ed8" font-size="22" font-weight="bold">영구 보존</text>
+  <text x="433" y="1016" text-anchor="middle" fill="#1e40af" font-size="15">요약·위키·원본 누적</text>
+  <rect x="548" y="952" width="198" height="86" rx="14" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="647" y="990" text-anchor="middle" fill="#b91c1c" font-size="22" font-weight="bold">비용 절감</text>
+  <text x="647" y="1016" text-anchor="middle" fill="#991b1b" font-size="15">요약+인덱스만 읽음</text>
+  <rect x="762" y="952" width="198" height="86" rx="14" fill="#f5f3ff" stroke="#c4b5fd"/>
+  <text x="861" y="990" text-anchor="middle" fill="#6d28d9" font-size="22" font-weight="bold">지식 축적</text>
+  <text x="861" y="1016" text-anchor="middle" fill="#5b21b6" font-size="15">옵시디언 위키+INDEX</text>
 
-  <rect x="334" y="1066" width="198" height="84" rx="14" fill="#eff6ff" stroke="#93c5fd"/>
-  <text x="433" y="1104" text-anchor="middle" fill="#1d4ed8" font-size="23" font-weight="bold">기억 보존</text>
-  <text x="433" y="1130" text-anchor="middle" fill="#1e40af" font-size="15">전부 파일로 저장</text>
-
-  <rect x="548" y="1066" width="198" height="84" rx="14" fill="#fef2f2" stroke="#fca5a5"/>
-  <text x="647" y="1104" text-anchor="middle" fill="#b91c1c" font-size="23" font-weight="bold">비용 절감</text>
-  <text x="647" y="1130" text-anchor="middle" fill="#991b1b" font-size="15">요약만 읽음</text>
-
-  <rect x="762" y="1066" width="198" height="84" rx="14" fill="#f5f3ff" stroke="#c4b5fd"/>
-  <text x="861" y="1104" text-anchor="middle" fill="#6d28d9" font-size="23" font-weight="bold">지식 축적</text>
-  <text x="861" y="1130" text-anchor="middle" fill="#5b21b6" font-size="15">옵시디언 위키</text>
-
-  <!-- 푸터 -->
-  <text x="540" y="1188" text-anchor="middle" fill="#64748b" font-size="19">컴팩트 대신 저장→종료→재접속→복구 + 옵시디언 위키  ·  누구나 따라할 수 있게 GitHub 공개</text>
+  <text x="540" y="1078" text-anchor="middle" fill="#64748b" font-size="18">명령은 /exit 하나 — 저장·요약·위키·인덱스 자동 · 새 세션은 요약+위키+인덱스만 읽음 · GitHub 공개</text>
 </svg>
