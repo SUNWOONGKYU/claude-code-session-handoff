@@ -4,7 +4,7 @@
  * session-to-wiki.js — SessionEnd hook (자동 위키화 트리거)
  *
  * 세션 종료 시, 원본 저장 직후 백그라운드로 wiki-distill-worker.js 를 띄운다.
- * 워커가 원본을 가볍게 읽어 Haiku로 위키 노트를 만들므로, 종료/재접속은
+ * 워커가 원본을 가볍게 읽어 Sonnet으로 요약·위키 노트를 만들므로, 종료/재접속은
  * 전혀 느려지지 않는다(비차단·detached).
  *
  * 재귀 방지: CLAUDE_WIKI_CHILD 가 있으면(=워커가 띄운 claude 세션) 아무것도 안 함.

@@ -4,10 +4,11 @@
  * wiki-distill-worker.js — 백그라운드 증류 워커 (요약 + 위키 동시 생성)
  *
  * session-to-wiki.js(SessionEnd 훅)가 detached로 띄운다.
- * 방금 끝난 세션 원본(.jsonl)을 "가볍게" 읽어(최근 24,000자) Sonnet 한 번 호출로
- * 두 가지를 만든다:
- *   ① 이어가기 요약 → <cwd>/sessions/LATEST.md   (새 세션이 읽고 복구)
- *   ② 위키 노트(지식 + [[링크]]) → <cwd>/sessions/raw/<ts>_<sid>_위키.md  (옵시디언에 누적)
+ * 방금 끝난 세션 원본(.jsonl)을 "가볍게" 읽어(최근 24,000자) Sonnet(claude-sonnet-4-6)
+ * 한 번 호출로 세 가지를 만든다:
+ *   ① 이어가기 요약 → <cwd>/sessions/summary/<ts>_<sid>_요약.md  (새 세션이 읽고 복구, 누적)
+ *   ② 위키 노트(지식 + [[링크]]) → <cwd>/sessions/wiki/<ts>_<sid>_위키.md  (옵시디언에 누적)
+ *   ③ 위키 인덱스 → <cwd>/sessions/wiki/INDEX.md  (한 줄 설명, 최신이 맨 위)
  *
  * 인증: 잘못된 ANTHROPIC_API_KEY 제거 후 OAuth 사용.
  * 재귀 방지: claude 자식에 CLAUDE_WIKI_CHILD=1 → 그 세션의 훅들은 건너뜀.

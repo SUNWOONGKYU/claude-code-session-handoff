@@ -7,7 +7,7 @@
  * stdin JSON의 transcript_path(이번 세션 대화 .jsonl)를 읽어
  * <cwd>\sessions\raw\ 에 그대로 복사한다. 폴더 없으면 만든다.
  *
- * - 증류(요약)는 하지 않는다. raw 보존만 담당 (증류는 /마무리 명령이 함).
+ * - 증류(요약)는 하지 않는다. raw 보존만 담당 (증류는 session-to-wiki.js가 띄우는 워커가 함).
  * - 멱등: 같은 session_id 파일이 이미 있으면 건너뛴다 (중복 방지).
  * - source=clear 등 어떤 reason이든 raw는 보존한다.
  * - 절대 차단하지 않음(exit 0). SessionEnd는 종료를 막을 수 없음.

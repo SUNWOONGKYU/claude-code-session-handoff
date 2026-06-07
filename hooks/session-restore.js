@@ -4,10 +4,11 @@
  * session-restore.js — SessionStart hook (직전 맥락 주입)
  *
  * 새 세션 시작 시 stdout으로 출력 → 새 세션 맨 앞 컨텍스트로 자동 주입.
- * 주입 내용(가볍게 둘 다):
- *   ① 이어가기 요약  : <cwd>/sessions/LATEST.md  (전체)
- *   ② 위키 목차      : <cwd>/sessions/wiki/*.md  (제목 목록만 — 필요한 것만 펼쳐 읽도록)
- * 둘 다 없고 raw만 있으면 → 최신 raw 포인터.
+ * 주입 내용(3종):
+ *   ① 이어가기 요약  : <cwd>/sessions/summary/*.md  (가장 최신 1개 전체)
+ *   ② 직전 위키 노트 : <cwd>/sessions/wiki/*.md      (INDEX 제외, 가장 최신 1개 본문 전체)
+ *   ③ 위키 인덱스    : <cwd>/sessions/wiki/INDEX.md  (쌓인 지식 목록 — 한 줄 설명 포함)
+ * 셋 다 없고 raw만 있으면 → 최신 raw 포인터.
  *
  * source=clear 면 주입 생략. CLAUDE_WIKI_CHILD(위키 워커 자식)면 생략.
  * 절대 차단하지 않음(exit 0).
