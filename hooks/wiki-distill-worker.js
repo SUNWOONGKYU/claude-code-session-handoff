@@ -75,7 +75,8 @@ function main() {
 
   const project = path.basename(cwd);
   // 한 번의 호출로 세 섹션 출력 (마커로 구분). 프롬프트는 한 줄(cmd 안전).
-  const PROMPT = "다음 입력은 Claude Code 세션 전사록이다. 한국어로 세 부분만 출력하라. (1) 한 줄에 @@@TITLE@@@ 만 단독으로 쓰고 그 아래 이 세션을 한 문장(40자 이내)으로 압축한 제목 한 줄. (2) 한 줄에 @@@HANDOFF@@@ 만 단독으로 쓰고 그 아래 '## 한 일 / ## 현재 상태 / ## 다음 할 일' 형식의 6~10줄 이어가기 요약. (3) 한 줄에 @@@WIKI@@@ 만 단독으로 쓰고 그 아래 이번 세션의 핵심 지식·결정·산출물을 주제별로 정리하고 관련 개념은 [[제목]] 형식 위키링크로 표시한 지식 노트. 세 마커는 각각 한 줄에 단독으로. 머리말·설명 없이 세 부분만 출력.";
+  // 출력 언어는 전사록의 주 언어를 따른다(한국어 세션→한국어, 영어 세션→영어 …). 메타 지시는 언어중립(영어).
+  const PROMPT = "The following input is a Claude Code session transcript. First detect the transcript's main language, then write ALL of your output in that same language. Output only three parts. (1) A line containing only @@@TITLE@@@ , then below it a one-line title compressing this session (about 40 characters or fewer). (2) A line containing only @@@HANDOFF@@@ , then below it a 6-10 line handoff summary with three sections meaning: What was done / Current state / Next steps. (3) A line containing only @@@WIKI@@@ , then below it a knowledge note that organizes this session's key knowledge, decisions and artifacts by topic, marking related concepts as [[title]] wikilinks. Each of the three markers must be alone on its own line. No preamble or explanation, output only the three parts.";
   const cmd = `claude -p "${PROMPT}" --model claude-sonnet-4-6 --dangerously-skip-permissions`;
 
   const env = { ...process.env, CLAUDE_WIKI_CHILD: '1' };
@@ -119,13 +120,13 @@ function main() {
   // 산출물 쓰기 — degradedReason이 truthy면 frontmatter에 품질 저하 기록
   function writeOut(p, degradedReason) {
     let title = p.title, summary = p.summary, wiki = p.wiki;
-    if (!title) title = `${project} 세션`;
+    if (!title) title = project;
     const dateIso = new Date().toISOString();
     const stamp = ts();
     const qLines = degradedReason ? `quality: degraded\ndegraded_reason: ${degradedReason}\n` : '';
     try {
       // ① 이어가기 요약 → summary 폴더에 누적(매번 새 파일, 덮어쓰지 않음)
-      const summaryNote = `---\ndate: ${dateIso}\nproject: ${project}\ntype: handoff-summary\nsource: auto (SessionEnd / Sonnet)\n${qLines}---\n\n# 이어가기 요약 — ${project} (${stamp})\n\n${summary}\n`;
+      const summaryNote = `---\ndate: ${dateIso}\nproject: ${project}\ntype: handoff-summary\nsource: auto (SessionEnd / Sonnet)\n${qLines}---\n\n# ${title} (${stamp})\n\n${summary}\n`;
       fs.writeFileSync(path.join(summaryDir, `${stamp}_${sid}_요약.md`), summaryNote, 'utf8');
       log('이어가기 요약 저장(summary/ 누적)' + (degradedReason ? ` [degraded: ${degradedReason}]` : ''));
 
