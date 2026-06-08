@@ -11,8 +11,11 @@ function cloop {
     Write-Host "Exit a session : type  /exit  inside the session" -ForegroundColor DarkGray
     Write-Host "Stop the loop  : press  q  within 5s after a session ends" -ForegroundColor DarkGray
     Write-Host ""
+    # On reconnect, seed Claude with a first prompt so it recaps the restored handoff and asks what to do.
+    $greeting = 'A previous-session handoff summary, wiki note, and index were just injected at SessionStart. In 2-3 lines, briefly recap what was done in the previous session and where things stand, then ask me what to work on next. Reply in the same language as that summary. If there is no prior record, just say so and ask what to do.'
+    $reconnecting = $false
     while ($true) {
-        claude --dangerously-skip-permissions
+        if ($reconnecting) { claude --dangerously-skip-permissions $greeting } else { claude --dangerously-skip-permissions }
 
         Write-Host ""
         try { $Host.UI.RawUI.FlushInputBuffer() } catch {}
@@ -53,6 +56,7 @@ function cloop {
             }
         }
         if ($quit) { Write-Host "cloop stopped." -ForegroundColor Cyan; break }
+        $reconnecting = $true
         Write-Host "--- reconnecting ---" -ForegroundColor Cyan
     }
 }
