@@ -10,6 +10,7 @@
  *   ③ 위키 인덱스    : <cwd>/sessions/wiki/INDEX.md  (쌓인 지식 목록 — 한 줄 설명 포함)
  * 셋 다 없고 raw만 있으면 → 최신 raw 포인터.
  * 요약 frontmatter가 quality: degraded면 주입 시 품질 경고 한 줄을 함께 출력.
+ * 주입 라벨(=== … ===)은 주입 내용의 언어를 따라간다 — 한글 있으면 한국어, 없으면 영어.
  *
  * source=clear 면 주입 생략. CLAUDE_WIKI_CHILD(위키 워커 자식)면 생략.
  * 절대 차단하지 않음(exit 0).
@@ -46,47 +47,58 @@ function finish() {
       return fl.length ? path.join(dir, fl[0].f) : null;
     };
 
-    const out = [];
-
-    // ① 이어가기 요약 — summary 폴더의 '가장 최신' 1개만 읽음 (누적되지만 최신만 참조)
+    // 주입 내용 먼저 읽기 (요약 최신 1개 / 위키 최신 1개 / INDEX)
     const latestSummary = newestIn(summaryDir, '.md');
-    if (latestSummary) {
-      const body = fs.readFileSync(latestSummary, 'utf8').trim();
-      out.push('=== 직전 세션 이어가기 요약 (자동 주입) ===');
-      if (/^quality:\s*degraded/m.test(body)) {
-        out.push('(주의: 이 요약은 자동증류 품질이 낮음 — sessions/raw 원본 확인 권장)');
-      }
-      out.push(body);
-    }
+    const summaryBody = latestSummary ? fs.readFileSync(latestSummary, 'utf8').trim() : '';
 
-    // ② 직전 위키 노트 (본문 전체) — INDEX.md 제외, 가장 최신
+    let wikiBody = '', indexBody = '';
     if (fs.existsSync(wikiDir)) {
       const notes = fs.readdirSync(wikiDir)
         .filter(f => f.endsWith('.md') && f !== 'INDEX.md')
         .map(f => ({ f, m: fs.statSync(path.join(wikiDir, f)).mtimeMs }))
         .sort((a, b) => b.m - a.m);
-      if (notes.length) {
-        out.push('');
-        out.push('=== 직전 세션 위키 노트 (자동 주입) ===');
-        out.push(fs.readFileSync(path.join(wikiDir, notes[0].f), 'utf8').trim());
-      }
-      // ③ 위키 인덱스(INDEX.md) 전체 — 쌓인 지식 목록(한 줄 설명 포함)
+      if (notes.length) wikiBody = fs.readFileSync(path.join(wikiDir, notes[0].f), 'utf8').trim();
       const indexFile = path.join(wikiDir, 'INDEX.md');
-      if (fs.existsSync(indexFile)) {
-        out.push('');
-        out.push('=== 위키 인덱스 (필요한 항목만 펼쳐 읽으세요) ===');
-        out.push(fs.readFileSync(indexFile, 'utf8').trim());
-      }
+      if (fs.existsSync(indexFile)) indexBody = fs.readFileSync(indexFile, 'utf8').trim();
     }
+
+    // 라벨 언어는 '주입 내용'의 언어를 따라간다 — 한글이 있으면 한국어, 없으면 영어.
+    const ko = /[가-힣]/.test(summaryBody || wikiBody || indexBody || '');
+    const L = ko ? {
+      summary: '=== 직전 세션 이어가기 요약 (자동 주입) ===',
+      degraded: '(주의: 이 요약은 자동증류 품질이 낮음 — sessions/raw 원본 확인 권장)',
+      wiki: '=== 직전 세션 위키 노트 (자동 주입) ===',
+      index: '=== 위키 인덱스 (필요한 항목만 펼쳐 읽으세요) ===',
+      footer: '(이어서 작업하려면 위 요약을 참고하고, 더 깊은 맥락은 위키 항목이나 sessions/raw 원본을 필요한 만큼만 읽으세요.)',
+      rawHead: '=== 직전 세션 원본 있음 (아직 요약/위키 없음) ===',
+      rawBody: '이어서 작업하려면 필요한 부분만 읽으세요: '
+    } : {
+      summary: '=== Previous session handoff summary (auto-injected) ===',
+      degraded: '(Note: this summary was auto-distilled at low quality — check the sessions/raw original.)',
+      wiki: '=== Previous session wiki note (auto-injected) ===',
+      index: '=== Wiki index (expand only what you need) ===',
+      footer: '(To continue, use the summary above; read the wiki notes or sessions/raw originals only as needed.)',
+      rawHead: '=== Previous session raw transcript available (no summary/wiki yet) ===',
+      rawBody: 'Read only the parts you need to continue: '
+    };
+
+    const out = [];
+    if (summaryBody) {
+      out.push(L.summary);
+      if (/^quality:\s*degraded/m.test(summaryBody)) out.push(L.degraded);
+      out.push(summaryBody);
+    }
+    if (wikiBody) { out.push(''); out.push(L.wiki); out.push(wikiBody); }
+    if (indexBody) { out.push(''); out.push(L.index); out.push(indexBody); }
 
     if (out.length) {
       out.push('---');
-      out.push('(이어서 작업하려면 위 요약을 참고하고, 더 깊은 맥락은 위키 항목이나 sessions/raw 원본을 필요한 만큼만 읽으세요.)');
+      out.push(L.footer);
       console.log(out.join('\n'));
       return process.exit(0);
     }
 
-    // 폴백: 요약·위키 없고 raw만 있으면 최신 원본 포인터
+    // 폴백: 요약·위키 없고 raw만 있으면 최신 원본 포인터 (내용 없어 언어 판정 불가 → 기본 영어)
     const rawDir = path.join(sessionsDir, 'raw');
     if (fs.existsSync(rawDir)) {
       const files = fs.readdirSync(rawDir)
@@ -94,8 +106,8 @@ function finish() {
         .map(f => ({ f, m: fs.statSync(path.join(rawDir, f)).mtimeMs }))
         .sort((a, b) => b.m - a.m);
       if (files.length) {
-        console.log('=== 직전 세션 원본 있음 (아직 요약/위키 없음) ===');
-        console.log('이어서 작업하려면 필요한 부분만 읽으세요: ' + path.join(rawDir, files[0].f));
+        console.log(L.rawHead);
+        console.log(L.rawBody + path.join(rawDir, files[0].f));
       }
     }
   } catch (e) {
