@@ -15,18 +15,42 @@ function cloop {
         claude --dangerously-skip-permissions
 
         Write-Host ""
-        Write-Host "Session ended. Auto-reconnect in 5s... (press 'q' now to quit completely)" -ForegroundColor Yellow
-
         try { $Host.UI.RawUI.FlushInputBuffer() } catch {}
-        $deadline = (Get-Date).AddSeconds(5)
         $quit = $false
-        while ((Get-Date) -lt $deadline) {
-            if ([Console]::KeyAvailable) {
-                $k = [Console]::ReadKey($true)
-                if ($k.KeyChar -eq 'q' -or $k.KeyChar -eq 'Q') { $quit = $true }
-                break
+
+        # Wait for the background distillation (summary/wiki) to finish before reconnecting,
+        # so the next session can actually read the just-ended session's handoff.
+        # The SessionEnd hook creates sessions\.distilling; the worker removes it when done.
+        $marker = Join-Path (Get-Location) 'sessions\.distilling'
+        $active = $false
+        if (Test-Path $marker) {
+            try { $age = ((Get-Date) - (Get-Item $marker).LastWriteTime).TotalSeconds } catch { $age = 0 }
+            if ($age -lt 180) { $active = $true }   # ignore a stale marker (dead worker)
+        }
+        if ($active) {
+            Write-Host "Distilling previous session (summary/wiki)... waiting so the next session can read it. (press 'q' to quit)" -ForegroundColor DarkGray
+            $dl = (Get-Date).AddSeconds(95)
+            while ((Test-Path $marker) -and ((Get-Date) -lt $dl)) {
+                if ([Console]::KeyAvailable) {
+                    $k = [Console]::ReadKey($true)
+                    if ($k.KeyChar -eq 'q' -or $k.KeyChar -eq 'Q') { $quit = $true }
+                    break
+                }
+                Start-Sleep -Milliseconds 300
             }
-            Start-Sleep -Milliseconds 100
+        }
+
+        if (-not $quit) {
+            Write-Host "Auto-reconnect in 5s... (press 'q' now to quit completely)" -ForegroundColor Yellow
+            $deadline = (Get-Date).AddSeconds(5)
+            while ((Get-Date) -lt $deadline) {
+                if ([Console]::KeyAvailable) {
+                    $k = [Console]::ReadKey($true)
+                    if ($k.KeyChar -eq 'q' -or $k.KeyChar -eq 'Q') { $quit = $true }
+                    break
+                }
+                Start-Sleep -Milliseconds 100
+            }
         }
         if ($quit) { Write-Host "cloop stopped." -ForegroundColor Cyan; break }
         Write-Host "--- reconnecting ---" -ForegroundColor Cyan

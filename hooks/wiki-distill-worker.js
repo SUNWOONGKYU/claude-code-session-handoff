@@ -34,6 +34,9 @@ const sessionsDir = path.join(cwd, 'sessions');
 const wikiDir = path.join(sessionsDir, 'wiki');       // 위키 노트(지식) 누적
 const summaryDir = path.join(sessionsDir, 'summary'); // 이어가기 요약 누적 (덮어쓰지 않음)
 const logFile = path.join(sessionsDir, '.wiki-distill.log');
+const markerPath = path.join(sessionsDir, '.distilling');
+// 워커가 어떤 경로로 끝나든(성공/폴백/에러/타임아웃) 진행중 마커를 제거 → cloop이 재접속 진행.
+process.on('exit', () => { try { fs.unlinkSync(markerPath); } catch (e) {} });
 
 function log(m) {
   try {
