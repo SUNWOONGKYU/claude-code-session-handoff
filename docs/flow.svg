@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1422" viewBox="0 0 1080 1422" font-family="'Malgun Gothic','Apple SD Gothic Neo',sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1422" viewBox="0 0 1080 1422" font-family="'Malgun Gothic','Apple SD Gothic Neo',sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">Claude Code 세션 핸드오프 — 관계도 + 흐름도</title>
+  <desc id="d">SessionStart/SessionEnd 훅과 cloop 자동 재접속, 백그라운드 Sonnet 증류로 구성된 세션 핸드오프 시스템의 구성요소 관계도(아키텍처)와 시간순 흐름도. /exit 한 번으로 원본·이어가기 요약·위키·INDEX를 자동 저장하고 새 세션에 자동 주입한다.</desc>
   <rect x="0" y="0" width="1080" height="1422" fill="#f1f5f9"/>
   <defs>
     <marker id="ah" markerUnits="userSpaceOnUse" markerWidth="13" markerHeight="11" refX="11" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 Z" fill="#475569"/></marker>
@@ -15,6 +17,10 @@
   <rect x="0" y="120" width="1080" height="46" fill="#ede9fe"/>
   <text x="40" y="151" fill="#6d28d9" font-size="24" font-weight="bold">① 관계도 — 누가 무엇을 호출·저장하는가 (아키텍처)</text>
 
+  <!-- 열 헤더 (위계 강조) -->
+  <text x="200" y="222" text-anchor="middle" fill="#7c3aed" font-size="16" font-weight="bold">실행 · 래퍼</text>
+  <text x="570" y="222" text-anchor="middle" fill="#b45309" font-size="16" font-weight="bold">훅 · 백그라운드 증류</text>
+
   <!-- 왼쪽: 트리거/래퍼 (열 중심 x=190, 박스 x=60~340) -->
   <rect x="60" y="232" width="280" height="92" rx="12" fill="#f5f3ff" stroke="#c4b5fd"/>
   <rect x="60" y="232" width="10" height="92" rx="5" fill="#8b5cf6"/>
@@ -22,26 +28,26 @@
   <text x="84" y="291" fill="#475569" font-size="14">claude 무한 루프 · /exit 후 5초 재접속</text>
   <text x="84" y="312" fill="#475569" font-size="14">q 누르면 루프 종료</text>
 
-  <line x1="200" y1="324" x2="200" y2="376" stroke="#475569" stroke-width="3" marker-end="url(#ah)"/>
-  <rect x="212" y="340" width="48" height="22" rx="4" fill="#f1f5f9"/>
-  <text x="236" y="356" text-anchor="middle" fill="#475569" font-size="14">실행</text>
+  <line x1="200" y1="324" x2="200" y2="398" stroke="#475569" stroke-width="3" marker-end="url(#ah)"/>
+  <rect x="212" y="350" width="48" height="22" rx="4" fill="#f1f5f9"/>
+  <text x="236" y="366" text-anchor="middle" fill="#475569" font-size="14">실행</text>
 
-  <rect x="60" y="378" width="280" height="64" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
-  <rect x="60" y="378" width="10" height="64" rx="5" fill="#8b5cf6"/>
-  <text x="200" y="417" text-anchor="middle" fill="#0f172a" font-size="20" font-weight="bold">claude 세션</text>
+  <rect x="60" y="400" width="280" height="64" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+  <rect x="60" y="400" width="10" height="64" rx="5" fill="#8b5cf6"/>
+  <text x="200" y="439" text-anchor="middle" fill="#0f172a" font-size="20" font-weight="bold">claude 세션</text>
 
   <!-- 재접속 루프백 (왼쪽 바깥 곡선, 가로 라벨) -->
-  <path d="M60,426 C20,426 20,288 58,278" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-dasharray="5,4" marker-end="url(#ah)"/>
-  <rect x="10" y="341" width="84" height="22" rx="4" fill="#f1f5f9"/>
-  <text x="52" y="357" text-anchor="middle" fill="#7c3aed" font-size="14" font-weight="bold">재접속(자동)</text>
+  <path d="M60,448 C20,448 20,290 58,280" fill="none" stroke="#8b5cf6" stroke-width="2.5" stroke-dasharray="5,4" marker-end="url(#ah)"/>
+  <rect x="10" y="353" width="84" height="22" rx="4" fill="#f1f5f9"/>
+  <text x="52" y="369" text-anchor="middle" fill="#7c3aed" font-size="14" font-weight="bold">재접속(자동)</text>
 
-  <rect x="60" y="496" width="280" height="68" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
-  <rect x="60" y="496" width="10" height="68" rx="5" fill="#64748b"/>
-  <text x="84" y="526" fill="#0f172a" font-size="17" font-weight="bold">settings.json</text>
-  <text x="84" y="549" fill="#475569" font-size="14">SessionStart/SessionEnd 훅 등록</text>
-  <line x1="200" y1="496" x2="200" y2="444" stroke="#475569" stroke-width="3" marker-end="url(#ah)"/>
-  <rect x="212" y="458" width="48" height="22" rx="4" fill="#f1f5f9"/>
-  <text x="236" y="474" text-anchor="middle" fill="#475569" font-size="14">등록</text>
+  <rect x="60" y="548" width="280" height="68" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+  <rect x="60" y="548" width="10" height="68" rx="5" fill="#64748b"/>
+  <text x="84" y="578" fill="#0f172a" font-size="17" font-weight="bold">settings.json</text>
+  <text x="84" y="601" fill="#475569" font-size="14">SessionStart/SessionEnd 훅 등록</text>
+  <line x1="200" y1="548" x2="200" y2="466" stroke="#475569" stroke-width="3" marker-end="url(#ah)"/>
+  <rect x="212" y="495" width="48" height="22" rx="4" fill="#f1f5f9"/>
+  <text x="236" y="511" text-anchor="middle" fill="#475569" font-size="14">등록</text>
 
   <!-- 가운데: 훅/증류 (박스 x=400~740) -->
   <rect x="400" y="232" width="340" height="140" rx="14" fill="#fffbeb" stroke="#fcd34d"/>
@@ -56,7 +62,7 @@
   <text x="424" y="431" fill="#be123c" font-size="18" font-weight="bold">wiki-distill-worker.js</text>
   <text x="424" y="459" fill="#0f172a" font-size="14">→ Sonnet(claude -p) 1회 호출</text>
   <text x="424" y="483" fill="#0f172a" font-size="14">실패 시 1회 재시도 → 폴백이면 degraded</text>
-  <text x="424" y="507" fill="#0f172a" font-size="14">→ summary · wiki · INDEX 생성</text>
+  <text x="424" y="507" fill="#0f172a" font-size="14">→ summary·wiki·INDEX 생성 (세션 언어로)</text>
 
   <rect x="400" y="548" width="340" height="104" rx="14" fill="#f0fdf4" stroke="#86efac"/>
   <rect x="400" y="548" width="10" height="104" rx="5" fill="#16a34a"/>
@@ -65,19 +71,19 @@
   <text x="424" y="631" fill="#0f172a" font-size="14">요약+직전위키+INDEX · degraded면 경고</text>
 
   <!-- claude 세션 → SessionEnd (종료 시) : 박스 상단부에서 출발 -->
-  <path d="M340,394 C376,394 372,306 397,302" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#ah)"/>
-  <rect x="356" y="336" width="58" height="22" rx="4" fill="#f1f5f9"/>
-  <text x="385" y="352" text-anchor="middle" fill="#475569" font-size="14">종료 시</text>
+  <path d="M340,418 C378,418 372,306 397,302" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#ah)"/>
+  <rect x="356" y="350" width="58" height="22" rx="4" fill="#f1f5f9"/>
+  <text x="385" y="366" text-anchor="middle" fill="#475569" font-size="14">종료 시</text>
 
   <!-- SessionStart → claude 세션 (주입 점선) : 박스 하단부로 도착 -->
-  <path d="M398,600 C360,600 358,418 341,410" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#ahd)"/>
-  <rect x="349" y="494" width="58" height="22" rx="4" fill="#f0fdf4"/>
-  <text x="378" y="510" text-anchor="middle" fill="#15803d" font-size="14">주입</text>
+  <path d="M398,600 C360,600 360,452 341,448" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#ahd)"/>
+  <rect x="349" y="516" width="58" height="22" rx="4" fill="#f0fdf4"/>
+  <text x="378" y="532" text-anchor="middle" fill="#15803d" font-size="14">주입</text>
 
   <!-- 오른쪽: 저장소 (박스 x=800~1040) -->
-  <text x="800" y="222" fill="#0369a1" font-size="16" font-weight="bold">sessions/ (프로젝트별 저장소)</text>
-  <rect x="800" y="232" width="240" height="84" rx="12" fill="#f0f9ff" stroke="#7dd3fc"/>
-  <rect x="800" y="232" width="10" height="84" rx="5" fill="#0ea5e9"/>
+  <text x="920" y="222" text-anchor="middle" fill="#0369a1" font-size="16" font-weight="bold">sessions/ (저장소)</text>
+  <rect x="800" y="232" width="240" height="96" rx="12" fill="#f0f9ff" stroke="#7dd3fc"/>
+  <rect x="800" y="232" width="10" height="96" rx="5" fill="#0ea5e9"/>
   <text x="824" y="263" fill="#0f172a" font-size="17" font-weight="bold">sessions/raw/</text>
   <text x="824" y="290" fill="#475569" font-size="14">원본 .jsonl (무손실 안전망)</text>
 
@@ -103,10 +109,10 @@
   <rect x="748" y="418" width="44" height="22" rx="4" fill="#f8fafc"/>
   <text x="770" y="434" text-anchor="middle" fill="#475569" font-size="14">저장</text>
 
-  <!-- worker → wiki (저장) : 수평 -->
-  <line x1="740" y1="490" x2="798" y2="586" stroke="#475569" stroke-width="2.5" marker-end="url(#ah)"/>
-  <rect x="748" y="528" width="44" height="22" rx="4" fill="#f8fafc"/>
-  <text x="770" y="544" text-anchor="middle" fill="#475569" font-size="14">저장</text>
+  <!-- worker → wiki (저장) : 박스 하단에서 출발해 아래 wiki로 들어가는 곡선 -->
+  <path d="M740,510 C772,510 772,584 798,584" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#ah)"/>
+  <rect x="748" y="552" width="44" height="22" rx="4" fill="#f8fafc"/>
+  <text x="770" y="568" text-anchor="middle" fill="#475569" font-size="14">저장</text>
 
   <!-- SessionStart → 저장소 (읽기, 점선) : summary/wiki에서 읽음 -->
   <line x1="740" y1="610" x2="798" y2="628" stroke="#16a34a" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#ahd)"/>
