@@ -65,11 +65,42 @@ function extractConvo() {
       if (t) text += `[${role}] ${t}\n`;
     }
   } catch (e) { log('extract 실패: ' + e.message); }
-  return text.slice(-24000); // 가볍게: 최근 24,000자만 사용
+  return text.slice(-32000); // 가볍게(최근 우선): 최근 32,000자 — 엑시트 직전 내용 상세화를 위해 창 확대
+}
+
+// '작업 중이던 그 세션'만 증류 (요건 2). 워크플로/서브에이전트/wiki-worker 세션은 건너뜀.
+// 마이두 환경에서 진짜 대화도 entrypoint='sdk-cli' → entrypoint 기준 사용 불가.
+// user 메시지 수 ≥ 2 로 판별: wiki-worker·서브에이전트는 user 1개(거대 프롬프트 1회).
+function isInteractiveSession(transcriptPath) {
+  try {
+    const lines = fs.readFileSync(transcriptPath, 'utf8').split('\n');
+    let userCount = 0;
+    for (const ln of lines) {
+      const s = ln.trim(); if (!s) continue;
+      let o; try { o = JSON.parse(s); } catch { continue; }
+      if (o.type === 'user') userCount++;
+      if (userCount >= 2) return true;
+    }
+    return false;
+  } catch { return true; }
+}
+
+// 세션 연결고리: 트랜스크립트에 박힌 gitBranch 추출 (작업 줄기 식별용).
+function extractGitBranch() {
+  try {
+    const lines = fs.readFileSync(transcript, 'utf8').split('\n');
+    for (const ln of lines) {
+      const s = ln.trim(); if (!s) continue;
+      let o; try { o = JSON.parse(s); } catch { continue; }
+      if (o.gitBranch) return String(o.gitBranch);
+    }
+  } catch (e) {}
+  return '';
 }
 
 function main() {
   if (!transcript || !fs.existsSync(transcript)) { log('transcript 없음: ' + transcript); return; }
+  if (!isInteractiveSession(transcript)) { log('비인터랙티브(워크플로/서브에이전트/SDK) 세션 — 증류 건너뜀'); return; }
   if (!fs.existsSync(wikiDir)) fs.mkdirSync(wikiDir, { recursive: true });
   if (!fs.existsSync(summaryDir)) fs.mkdirSync(summaryDir, { recursive: true });
 
@@ -77,9 +108,10 @@ function main() {
   if (!convo.trim()) { log('대화 텍스트 없음 — 건너뜀'); return; }
 
   const project = path.basename(cwd);
+  const gitBranch = extractGitBranch(); // 세션 연결고리 — 복원 시 같은 브랜치(작업 줄기) 우선 선택
   // 한 번의 호출로 세 섹션 출력 (마커로 구분). 프롬프트는 한 줄(cmd 안전).
   // 출력 언어는 전사록의 주 언어를 따른다(한국어 세션→한국어, 영어 세션→영어 …). 메타 지시는 언어중립(영어).
-  const PROMPT = "The following input is a Claude Code session transcript. First detect the transcript's main language, then write ALL of your output in that same language. Output only three parts. (1) A line containing only @@@TITLE@@@ , then below it a one-line title compressing this session (about 40 characters or fewer). (2) A line containing only @@@HANDOFF@@@ , then below it a 6-10 line handoff summary with three sections meaning: What was done / Current state / Next steps. (3) A line containing only @@@WIKI@@@ , then below it a knowledge note that organizes this session's key knowledge, decisions and artifacts by topic, marking related concepts as [[title]] wikilinks. Each of the three markers must be alone on its own line. No preamble or explanation, output only the three parts.";
+  const PROMPT = "The following input is a Claude Code session transcript, ordered oldest to newest. First detect the transcript's main language, then write ALL of your output in that same language. Output only three parts. (1) A line containing only @@@TITLE@@@ , then below it a one-line title compressing this session (about 40 characters or fewer). (2) A line containing only @@@HANDOFF@@@ , then below it a handoff summary with three sections meaning: What was done / Current state / Next steps. CRITICAL REQUIREMENT: the MOST RECENT work, right before the session ended, is the highest priority — describe it in DETAIL, naming the exact files and paths touched, commands run, decisions made, and the precise current state (what is done, what is half-done, what comes next), so the next session can resume without re-investigating. Older work may be summarized in one or two lines, but the recent work section must be specific and may be long. Never compress away recent details. (3) A line containing only @@@WIKI@@@ , then below it a knowledge note that organizes this session's key knowledge, decisions and artifacts by topic, marking related concepts as [[title]] wikilinks. Each of the three markers must be alone on its own line. No preamble or explanation, output only the three parts.";
   const cmd = `claude -p "${PROMPT}" --model claude-sonnet-4-6 --dangerously-skip-permissions`;
 
   const env = { ...process.env, CLAUDE_WIKI_CHILD: '1' };
@@ -129,13 +161,14 @@ function main() {
     const qLines = degradedReason ? `quality: degraded\ndegraded_reason: ${degradedReason}\n` : '';
     try {
       // ① 이어가기 요약 → summary 폴더에 누적(매번 새 파일, 덮어쓰지 않음)
-      const summaryNote = `---\ndate: ${dateIso}\nproject: ${project}\ntype: handoff-summary\nsource: auto (SessionEnd / Sonnet)\n${qLines}---\n\n# ${title} (${stamp})\n\n${summary}\n`;
+      const linkLines = `session_id: ${sid}\ngit_branch: ${gitBranch || 'unknown'}\n`; // 세션 연결고리
+      const summaryNote = `---\ndate: ${dateIso}\nproject: ${project}\ntype: handoff-summary\nsource: auto (SessionEnd / Sonnet)\n${linkLines}${qLines}---\n\n# ${title} (${stamp})\n\n${summary}\n`;
       fs.writeFileSync(path.join(summaryDir, `${stamp}_${sid}_요약.md`), summaryNote, 'utf8');
       log('이어가기 요약 저장(summary/ 누적)' + (degradedReason ? ` [degraded: ${degradedReason}]` : ''));
 
       // ② 위키 노트 → wiki 폴더에 누적
       const wikiBase = `${stamp}_${sid}_위키`;
-      const wikiNote = `---\ndate: ${dateIso}\nproject: ${project}\ntype: session-wiki\nsource: auto (SessionEnd / Sonnet)\n${qLines}tags: [wiki, ${project}]\n---\n\n# ${title}\n\n${wiki}\n`;
+      const wikiNote = `---\ndate: ${dateIso}\nproject: ${project}\ntype: session-wiki\nsource: auto (SessionEnd / Sonnet)\n${linkLines}${qLines}tags: [wiki, ${project}]\n---\n\n# ${title}\n\n${wiki}\n`;
       fs.writeFileSync(path.join(wikiDir, wikiBase + '.md'), wikiNote, 'utf8');
       log('위키 노트 작성: ' + wikiBase);
 
