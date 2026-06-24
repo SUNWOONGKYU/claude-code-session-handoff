@@ -52,6 +52,8 @@ auto-injects the latest summary + last wiki note + index. Built from `SessionEnd
 
 자세한 설명: [`docs/세션훅_설명서.md`](docs/세션훅_설명서.md)
 
+> 📍 **저장 위치**: `sessions/`는 `claude`를 켠 폴더가 아니라 **세션에서 실제 가장 많이 편집·작업한 git 프로젝트 폴더**에 생성됩니다(전사 자동 분석 — `lib-project-dir.js`). 예: Desktop에서 켜고 `C:\Dev\my-project`를 작업하면 핸드오프는 `my-project`에 쌓입니다. 작업 파일이 git repo 밖이거나 판별 불가면 켠 폴더로 폴백.
+
 ---
 
 ## 설치 (Windows + PowerShell)
@@ -60,8 +62,10 @@ auto-injects the latest summary + last wiki note + index. Built from `SessionEnd
 > 경로의 `<사용자명>` 은 본인 환경에 맞게 바꾸세요.
 
 ### 1) 훅 스크립트 배치
-`hooks/` 의 4개 파일을 `C:\Users\<사용자명>\.claude\hooks\` 로 복사:
-`session-save-raw.js` · `session-restore.js` · `session-to-wiki.js` · `wiki-distill-worker.js`
+`hooks/` 의 5개 파일을 `C:\Users\<사용자명>\.claude\hooks\` 로 복사:
+`session-save-raw.js` · `session-restore.js` · `session-to-wiki.js` · `wiki-distill-worker.js` · `lib-project-dir.js`
+
+> `lib-project-dir.js` 는 저장 위치를 '실제 작업한 프로젝트 폴더'로 자동 결정하는 헬퍼(앞의 save-raw·to-wiki가 require). 빠뜨리지 말고 함께 복사하세요.
 
 ### 2) settings.json 병합
 `~/.claude/settings.json` 의 `"hooks"` 에 [`settings.example.json`](settings.example.json) 의

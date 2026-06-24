@@ -15,6 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { resolveProjectDir } = require('./lib-project-dir');
 
 let buf = '';
 let done = false;
@@ -47,7 +48,11 @@ function finish() {
       return process.exit(0);
     }
 
-    const rawDir = path.join(cwd, 'sessions', 'raw');
+    // 켠 폴더(cwd)가 아니라 '실제 작업한 프로젝트 폴더'에 저장한다.
+    const projectDir = resolveProjectDir(cwd, transcript);
+    if (projectDir !== cwd) console.log(`[session-save-raw] 저장 위치: cwd(${cwd}) → 실작업(${projectDir})`);
+
+    const rawDir = path.join(projectDir, 'sessions', 'raw');
     ensureDir(rawDir);
 
     // 멱등: 같은 session_id 파일이 이미 있으면 스킵
