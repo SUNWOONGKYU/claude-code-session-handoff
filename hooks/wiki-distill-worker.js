@@ -24,6 +24,12 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
+// 인프라 실패(구독 한도 소진·인증 오류 등)는 '내용 요약 실패'가 아니라 '일시적 장애'다.
+// 이 출력을 요약으로 저장하면 안 된다 — orphan으로 남겨 한도 회복 후 백필이 재증류한다. (2026-06-26 하드닝)
+const INFRA_RE = /weekly limit|usage limit|hit your .{0,20}limit|rate limit|Invalid API key|Fix external API key|insufficient.{0,10}credit|connectors are disabled/i;
+const MAX_DEGRADED_RETRIES = 2; // degraded 재증류 상한(백필 무한루프 방지). 같은 sid가 이 횟수까지 실패하면 포기.
+const isInfraError = (t) => !!t && INFRA_RE.test(t);
+
 const SUMMARY_KEEP = 10; // summary/ 최신 유지 개수 (나머지는 _archive/로 이동)
 
 const transcript = process.argv[2];
@@ -152,19 +158,47 @@ function main() {
     return { ok: false };
   }
 
-  // 산출물 쓰기 — degradedReason이 truthy면 frontmatter에 품질 저하 기록
+  // 같은 sid의 옛 degraded 산출물(summary/wiki)을 찾는다. retries 카운터 계승·중복 제거에 사용.
+  // 반환: { files: [경로...], maxRetries: 지금까지 최대 distill_retries }
+  function priorDegraded(theSid) {
+    const files = [], dirs = [summaryDir, wikiDir];
+    let maxRetries = 0;
+    for (const d of dirs) {
+      let names; try { names = fs.readdirSync(d); } catch { continue; }
+      for (const f of names) {
+        if (!f.includes(theSid) || !f.endsWith('.md')) continue;
+        const fp = path.join(d, f);
+        let txt; try { txt = fs.readFileSync(fp, 'utf8'); } catch { continue; }
+        // ★ frontmatter 블록만 검사 — 본문이 "quality: degraded"를 언급해도 오판 금지.
+        const fmM = txt.match(/^---\n([\s\S]*?)\n---/); const fm = fmM ? fmM[1] : '';
+        if (!/^quality:\s*degraded/m.test(fm)) continue; // degraded만 대상(정상본은 보존)
+        const m = fm.match(/^distill_retries:\s*(\d+)/m);
+        if (m) maxRetries = Math.max(maxRetries, parseInt(m[1], 10));
+        files.push(fp);
+      }
+    }
+    return { files, maxRetries };
+  }
+
+  // 산출물 쓰기 — degradedReason이 truthy면 frontmatter에 품질 저하 + 재시도 횟수 기록.
+  // 어느 경우든(정상/저하) 같은 sid의 옛 degraded 파일은 제거 → 누적·고착 방지.
   function writeOut(p, degradedReason) {
     let title = p.title, summary = p.summary, wiki = p.wiki;
     if (!title) title = project;
     const dateIso = new Date().toISOString();
     const stamp = ts();
-    const qLines = degradedReason ? `quality: degraded\ndegraded_reason: ${degradedReason}\n` : '';
+    const prior = priorDegraded(sid);
+    const retries = degradedReason ? prior.maxRetries + 1 : 0; // 이번에도 실패면 카운트 +1
+    const qLines = degradedReason ? `quality: degraded\ndegraded_reason: ${degradedReason}\ndistill_retries: ${retries}\n` : '';
     try {
       // ① 이어가기 요약 → summary 폴더에 누적(매번 새 파일, 덮어쓰지 않음)
       const linkLines = `session_id: ${sid}\ngit_branch: ${gitBranch || 'unknown'}\n`; // 세션 연결고리
       const summaryNote = `---\ndate: ${dateIso}\nproject: ${project}\ntype: handoff-summary\nsource: auto (SessionEnd / Sonnet)\n${linkLines}${qLines}---\n\n# ${title} (${stamp})\n\n${summary}\n`;
       fs.writeFileSync(path.join(summaryDir, `${stamp}_${sid}_요약.md`), summaryNote, 'utf8');
-      log('이어가기 요약 저장(summary/ 누적)' + (degradedReason ? ` [degraded: ${degradedReason}]` : ''));
+      // 정상본을 새로 썼거나 degraded를 갱신했으면 같은 sid의 옛 degraded는 제거(자기 자신 제외).
+      const selfSum = path.join(summaryDir, `${stamp}_${sid}_요약.md`);
+      for (const fp of prior.files) { if (fp !== selfSum) { try { fs.unlinkSync(fp); } catch (e) {} } }
+      log('이어가기 요약 저장(summary/ 누적)' + (degradedReason ? ` [degraded: ${degradedReason} · 재시도 ${retries}/${MAX_DEGRADED_RETRIES}]` : '') + (prior.files.length ? ` · 옛 degraded ${prior.files.length}건 정리` : ''));
 
       // ② 위키 노트 → wiki 폴더에 누적
       const wikiBase = `${stamp}_${sid}_위키`;
@@ -222,11 +256,12 @@ function main() {
   }
 
   // 오케스트레이션: 1차 호출 → 실패(마커없음·빈출력·타임아웃) 시 1회만 재시도 → 폴백(degraded)
+  // ★ 인프라 에러(한도/인증)는 어느 단계든 감지 즉시 저장 보류(orphan 유지) → 한도 회복 후 백필이 재증류.
   log('claude(Sonnet) 호출 시작 (입력 ' + convo.length + '자)');
   callClaude((full1, to1) => {
     if (full1) {
       const p1 = parse(full1);
-      if (p1.ok) return writeOut(p1, null);
+      if (p1.ok) return writeOut(p1, null); // 마커 정상 = 진짜 요약 → 내용 불문 저장(인프라검사는 마커없을 때만)
     }
     log('1차 실패(' + (full1 ? '마커없음' : (to1 ? '타임아웃' : '빈출력')) + ') — 1회 재시도');
     callClaude((full2, to2) => {
@@ -234,7 +269,9 @@ function main() {
       if (best) {
         const p2 = parse(best);
         if (p2.ok) { log('재시도 성공'); return writeOut(p2, null); }
-        const body = best.replace(/@@@\w+@@@/g, '').trim(); // 마커 여전히 없음 → 폴백 + degraded
+        // 마커 없음 → 진짜 산출 실패. 인프라 에러(한도/인증) 시그니처면 저장 보류(orphan 유지) → 한도 회복 후 백필 재시도.
+        if (isInfraError(best)) { log('인프라 에러 감지(한도/인증) — 저장 보류, orphan 유지(백필 재시도): ' + best.slice(0, 80).replace(/\n/g, ' ')); return; }
+        const body = best.replace(/@@@\w+@@@/g, '').trim(); // 인프라 아님 + 마커 없음 → 폴백 + degraded
         return writeOut({ title: '', summary: body, wiki: body }, '마커없음');
       }
       log('재시도도 산출 없음(' + (to2 ? '타임아웃' : '빈출력') + ') — 생성 건너뜀');

@@ -49,7 +49,37 @@ function backfillOrphans(projectDir, currentSid) {
     if (!fs.existsSync(projectsRoot)) return null;
     const now = Date.now();
     const MAXAGE = 72 * 3600 * 1000;
+    const IN_PROGRESS_MS = 180000; // 최근 3분 내 수정된 트랜스크립트는 '진행중 라이브'로 보고 증류 보류(라이브 조기 증류 방지). (2026-06-26)
+    const MAX_DEGRADED_RETRIES = 2; // degraded-only 세션 재증류 상한(무한루프 방지) — 워커와 동일.
     const curLc = currentSid ? String(currentSid).toLowerCase() : '';
+    const sidRe = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+    // 요약 분류: 정상 요약된 sid(properlySummarized) vs degraded-only sid(아직 제대로 저장 안 됨).
+    // degraded 파일만 있는 세션은 재증류 대상(상한까지) — degraded를 "요약됨"으로 보던 고착 버그 해제. (2026-06-26)
+    const properlySummarized = new Set();
+    const degradedRetries = new Map(); // sid → 최대 distill_retries
+    for (const d of [summaryDir, path.join(summaryDir, '_archive')]) {
+      if (!fs.existsSync(d)) continue;
+      for (const f of fs.readdirSync(d)) {
+        const m = f.match(sidRe); if (!m || !f.endsWith('.md')) continue;
+        const sidLc = m[0].toLowerCase();
+        let txt = ''; try { txt = fs.readFileSync(path.join(d, f), 'utf8'); } catch (e) {}
+        // ★ frontmatter 블록만 검사 — 본문이 "quality: degraded"를 언급해도(이 주제처럼) 오판 금지.
+        const fmM = txt.match(/^---\n([\s\S]*?)\n---/);
+        const fm = fmM ? fmM[1] : '';
+        if (/^quality:\s*degraded/m.test(fm)) {
+          const r = fm.match(/^distill_retries:\s*(\d+)/m);
+          const n = r ? parseInt(r[1], 10) : 0;
+          degradedRetries.set(sidLc, Math.max(degradedRetries.get(sidLc) || 0, n));
+        } else {
+          properlySummarized.add(sidLc); // 정상 요약 1개라도 있으면 완료로 본다
+        }
+      }
+    }
+    const degradedRetryable = new Set(); // 재증류해볼 degraded-only sid (정상본 없음 + 상한 미달)
+    for (const [sidLc, n] of degradedRetries) {
+      if (!properlySummarized.has(sidLc) && n < MAX_DEGRADED_RETRIES) degradedRetryable.add(sidLc);
+    }
 
     // ── 싼 게이트 (stat만, 내용 안 읽음) ──
     // 이 git 루트의 프로젝트 dir만 본다: C:\Dev\SAAH → "C--Dev-SAAH" 및 그 하위(C--Dev-SAAH-*).
@@ -57,7 +87,7 @@ function backfillOrphans(projectDir, currentSid) {
     const encodedRoot = projectDir.replace(/[^a-zA-Z0-9]/g, '-');
     const matchDir = (n) => n === encodedRoot || n.startsWith(encodedRoot + '-');
     const candDirs = [];
-    let newestTx = 0; // 현재 세션 제외, 최근 transcript의 최신 mtime
+    let newestTx = 0; // 현재 세션·진행중 라이브 제외, 최근 transcript의 최신 mtime
     for (const pd of fs.readdirSync(projectsRoot)) {
       if (!matchDir(pd)) continue;
       const dir = path.join(projectsRoot, pd);
@@ -69,26 +99,21 @@ function backfillOrphans(projectDir, currentSid) {
         if (curLc && f.slice(0, -6).toLowerCase() === curLc) continue;
         let st; try { st = fs.statSync(path.join(dir, f)); } catch { continue; }
         if (now - st.mtimeMs > MAXAGE) continue;
+        if (now - st.mtimeMs < IN_PROGRESS_MS) continue; // 진행중 라이브 — 게이트 계산서 제외(조기 증류 방지)
         if (st.mtimeMs > newestTx) newestTx = st.mtimeMs;
       }
     }
-    if (!newestTx) return null; // 최근 후보 없음
+    if (!newestTx && degradedRetryable.size === 0) return null; // 최근 후보·재증류 대상 둘 다 없음
     let newestSaved = 0; // 이미 저장된(raw/summary) 최신 mtime
     for (const d of [rawDir, summaryDir]) {
       if (!fs.existsSync(d)) continue;
       for (const f of fs.readdirSync(d)) { let st; try { st = fs.statSync(path.join(d, f)); } catch { continue; } if (st.mtimeMs > newestSaved) newestSaved = st.mtimeMs; }
     }
-    if (newestTx <= newestSaved) return null; // 정상 — 새 미저장 세션 없음 → 전체 스캔 생략(비용 0)
+    if (newestTx <= newestSaved && degradedRetryable.size === 0) return null; // 정상 — 새 미저장·재증류 대상 없음 → 전체 스캔 생략
 
-    // ── 여기부터는 미저장 세션이 감지됐을 때만 (실패 경로) ──
+    // ── 여기부터는 미저장/재증류 세션이 감지됐을 때만 (실패 경로) ──
     const distilling = fs.existsSync(path.join(sdir, '.distilling')); // 증류 중이면 신규 증류만 보류(raw 복사는 계속)
-    const sidRe = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
     const ts = (ms) => { const n = new Date(ms); const p = x => String(x).padStart(2, '0'); return `${n.getFullYear()}_${p(n.getMonth() + 1)}_${p(n.getDate())}__${p(n.getHours())}.${p(n.getMinutes())}`; };
-    const summarized = new Set();
-    for (const d of [summaryDir, path.join(summaryDir, '_archive')]) {
-      if (!fs.existsSync(d)) continue;
-      for (const f of fs.readdirSync(d)) { const m = f.match(sidRe); if (m) summarized.add(m[0].toLowerCase()); }
-    }
     const rawSaved = new Set();
     if (fs.existsSync(rawDir)) for (const f of fs.readdirSync(rawDir)) { const m = f.match(sidRe); if (m) rawSaved.add(m[0].toLowerCase()); }
     const norm = (p) => { try { return path.resolve(p).replace(/\\/g, '/').toLowerCase(); } catch (e) { return String(p).toLowerCase(); } };
@@ -102,6 +127,7 @@ function backfillOrphans(projectDir, currentSid) {
         const fp = path.join(dir, f);
         let fst; try { fst = fs.statSync(fp); } catch { continue; }
         if (now - fst.mtimeMs > MAXAGE) continue;
+        if ((now - fst.mtimeMs) < IN_PROGRESS_MS) continue; // 진행중 라이브 세션 — raw 복사·증류 모두 보류(조기 증류 방지)
         // 앞부분(256KB)만 읽어 cwd + 인터랙티브(user≥2) 판정
         const head = readHead(fp, 262144);
         let cwd = '', users = 0;
@@ -121,8 +147,10 @@ function backfillOrphans(projectDir, currentSid) {
             rawSaved.add(sidLc);
           } catch (e) {}
         }
-        // (2) 증류 후보 — 요약 안 된 것 중 가장 최근 1개
-        if (!summarized.has(sidLc) && (!best || fst.mtimeMs > best.mtime)) best = { fp, sid, mtime: fst.mtimeMs };
+        // (2) 증류 후보 — 정상 요약이 없는 것 중 가장 최근 1개. degraded-only는 상한 미달이면 재증류 포함.
+        const hasDegraded = degradedRetries.has(sidLc);
+        const eligible = !properlySummarized.has(sidLc) && (!hasDegraded || degradedRetryable.has(sidLc));
+        if (eligible && (!best || fst.mtimeMs > best.mtime)) best = { fp, sid, mtime: fst.mtimeMs };
       }
     }
     if (distilling || !best) return null; // 증류 중이거나 미요약 고아 없음 — raw 보존만 하고 종료
@@ -194,21 +222,22 @@ function finish() {
       } catch (e) {}
       return '';
     };
-    // 요약/위키 frontmatter에서 git_branch, session_id, 제목 추출
+    // 요약/위키 frontmatter에서 git_branch, session_id, 제목, degraded 여부 추출
     const metaOf = (full) => {
-      let branch = '', sid = '', title = '';
+      let branch = '', sid = '', title = '', degraded = false;
       try {
         const txt = fs.readFileSync(full, 'utf8');
         const fm = txt.match(/^---\n([\s\S]*?)\n---/);
         if (fm) {
           const b = fm[1].match(/^git_branch:\s*(.+)$/m); if (b) branch = b[1].trim();
           const s = fm[1].match(/^session_id:\s*(.+)$/m); if (s) sid = s[1].trim();
+          if (/^quality:\s*degraded/m.test(fm[1])) degraded = true;
         }
         const t = txt.match(/^#\s+(.+)$/m); if (t) title = t[1].trim();
       } catch (e) {}
       // 폴백: frontmatter에 session_id가 없는 구버전 요약은 파일명에 박힌 UUID에서 추출
       if (!sid) { const m = path.basename(full).match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i); if (m) sid = m[0]; }
-      return { branch, sid, title };
+      return { branch, sid, title, degraded };
     };
     const listMd = (dir) => {
       if (!fs.existsSync(dir)) return [];
@@ -219,14 +248,22 @@ function finish() {
 
     const branch = currentBranch(cwd);
 
-    // 요약: 같은 브랜치 최신 우선 → 없으면 전체 최신 (구버전 요약엔 branch 태그가 없어 폴백)
+    // 정상(non-degraded) 우선 선택기: 같은 브랜치 정상 최신 → 정상 최신 → 같은 브랜치 최신 → 전체 최신.
+    // degraded뿐일 때만 degraded를 주입(그땐 품질 경고 한 줄이 함께 나간다). (2026-06-26)
+    const pick = (list) =>
+      (branch && list.find(x => x.branch === branch && !x.degraded)) ||
+      list.find(x => !x.degraded) ||
+      (branch && list.find(x => x.branch === branch)) ||
+      list[0] || null;
+
+    // 요약: 정상 같은 브랜치 최신 우선 (구버전 요약엔 branch 태그가 없어 폴백)
     const sums = listMd(summaryDir);
-    const pickSum = (branch && sums.find(x => x.branch === branch)) || sums[0] || null;
+    const pickSum = pick(sums);
     const summaryBody = pickSum ? fs.readFileSync(pickSum.full, 'utf8').trim() : '';
 
-    // 위키: 같은 브랜치 최신 우선 → 없으면 전체 최신
+    // 위키: 정상 같은 브랜치 최신 우선
     const wikis = listMd(wikiDir);
-    const pickWiki = (branch && wikis.find(x => x.branch === branch)) || wikis[0] || null;
+    const pickWiki = pick(wikis);
     let wikiBody = pickWiki ? fs.readFileSync(pickWiki.full, 'utf8').trim() : '';
     let indexBody = '';
     const indexFile = path.join(wikiDir, 'INDEX.md');
