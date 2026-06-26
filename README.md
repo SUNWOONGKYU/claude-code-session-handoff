@@ -52,7 +52,9 @@ auto-injects the latest summary + last wiki note + index. Built from `SessionEnd
 
 자세한 설명: [`docs/세션훅_설명서.md`](docs/세션훅_설명서.md)
 
-> 📍 **저장 위치**: `sessions/`는 `claude`를 켠 폴더가 아니라 **세션에서 실제 가장 많이 편집·작업한 git 프로젝트 폴더**에 생성됩니다(전사 자동 분석 — `lib-project-dir.js`). 예: Desktop에서 켜고 `C:\Dev\my-project`를 작업하면 핸드오프는 `my-project`에 쌓입니다. 작업 파일이 git repo 밖이거나 판별 불가면 켠 폴더로 폴백.
+> 📍 **저장 위치 = git 루트**: `sessions/`는 `claude`를 켠 폴더(cwd)의 **git 루트**에 생성됩니다(`gitRootOf(cwd)` — `lib-project-dir.js`). 하위 폴더에서 켜도 한 곳으로 모입니다(예: `C:\repo\sub`에서 켜도 핸드오프는 `C:\repo\sessions\`). **저장 훅과 복원 훅이 모두 같은 `gitRootOf(cwd)`를 쓰므로 항상 같은 곳을 읽고 씁니다.** git repo가 아닌 폴더(예: Desktop)에서 켜면 cwd로 폴백.
+
+> 🛟 **백필 안전망**: `/exit` 실패·크래시·백그라운드 작업 중 종료 등으로 `SessionEnd`가 안 떠 저장이 누락돼도, 다음 세션 시작 시 자동 복구합니다. `SessionStart`가 먼저 `stat`만으로(내용 안 읽음) "새 미저장 세션이 있는지" 싸게 확인하고(정상 종료 시엔 즉시 통과 → 상시 비용 0), 누락이 감지될 때만 원본을 `sessions/raw/`에 복사(멱등)하고 미요약 최신 1개를 백그라운드 증류합니다.
 
 ---
 
@@ -65,7 +67,7 @@ auto-injects the latest summary + last wiki note + index. Built from `SessionEnd
 `hooks/` 의 5개 파일을 `C:\Users\<사용자명>\.claude\hooks\` 로 복사:
 `session-save-raw.js` · `session-restore.js` · `session-to-wiki.js` · `wiki-distill-worker.js` · `lib-project-dir.js`
 
-> `lib-project-dir.js` 는 저장 위치를 '실제 작업한 프로젝트 폴더'로 자동 결정하는 헬퍼(앞의 save-raw·to-wiki가 require). 빠뜨리지 말고 함께 복사하세요.
+> `lib-project-dir.js` 는 저장 위치를 git 루트로 결정하는 `gitRootOf` 헬퍼(세 훅 모두 require). 빠뜨리지 말고 함께 복사하세요.
 
 ### 2) settings.json 병합
 `~/.claude/settings.json` 의 `"hooks"` 에 [`settings.example.json`](settings.example.json) 의
@@ -101,6 +103,8 @@ auto-injects the latest summary + last wiki note + index. Built from `SessionEnd
 - 품질 자기검증: 마커 부족·빈 출력·타임아웃이면 **1회만 재시도**, 그래도 실패하면 폴백 + frontmatter에 `quality: degraded` 기록. 새 세션 복원 시 degraded면 "원본 확인 권장" 경고 한 줄을 함께 띄움.
 - 요약 retention: `summary/` 는 최신 10개만 두고 나머지는 `summary/_archive/` 로 **이동(삭제 아님)**. 개수는 워커의 `SUMMARY_KEEP` 상수로 조정.
 - INDEX 정합성: 갱신 시 실제 파일이 없는 `[[링크]]`(ghost)는 자동 제거(파일 자체는 안 건드림). 미색인 파일(orphan)은 로그만 남김.
+- 저장 위치 = `gitRootOf(cwd)` (켠 폴더의 git 루트). 저장 2훅과 복원 1훅이 동일 기준 → 항상 같은 곳을 읽고 씀. 비-git 폴더는 cwd 폴백.
+- 백필 안전망: `SessionEnd`가 안 떠도(크래시·강제종료 등) 다음 `SessionStart`에서 누락 세션의 raw 복사 + 미요약 최신 1개 증류. 싼 게이트(`stat`만)로 정상 종료 시엔 비용 0(스캔 안 함).
 - macOS/Linux는 `cloop`을 bash/zsh 함수로, 경로를 `~/.claude/...` 로 바꾸면 동일하게 동작.
 
 ## License

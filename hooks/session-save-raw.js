@@ -15,7 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { resolveProjectDir } = require('./lib-project-dir');
+const { gitRootOf } = require('./lib-project-dir');
 
 let buf = '';
 let done = false;
@@ -48,9 +48,8 @@ function finish() {
       return process.exit(0);
     }
 
-    // 켠 폴더(cwd)가 아니라 '실제 작업한 프로젝트 폴더'에 저장한다.
-    const projectDir = resolveProjectDir(cwd, transcript);
-    if (projectDir !== cwd) console.log(`[session-save-raw] 저장 위치: cwd(${cwd}) → 실작업(${projectDir})`);
+    // git 루트 한 곳에 저장한다 — 하위 폴더에서 켜도 통일. 복원 훅과 동일 기준. (PO 지시 2026-06-26)
+    const projectDir = gitRootOf(cwd) || cwd;
 
     const rawDir = path.join(projectDir, 'sessions', 'raw');
     ensureDir(rawDir);

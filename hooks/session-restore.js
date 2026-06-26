@@ -18,6 +18,125 @@
 
 const fs = require('fs');
 const path = require('path');
+const { gitRootOf } = require('./lib-project-dir');
+
+// 파일 앞부분만 읽는다(대용량 transcript 전체 읽기 회피).
+function readHead(fp, n) {
+  let fd;
+  try {
+    fd = fs.openSync(fp, 'r');
+    const b = Buffer.alloc(n);
+    const bytes = fs.readSync(fd, b, 0, n, 0);
+    return b.slice(0, bytes).toString('utf8');
+  } catch (e) { return ''; }
+  finally { if (fd !== undefined) { try { fs.closeSync(fd); } catch (e) {} } }
+}
+
+// 안전망: SessionEnd 미발화(/exit 실패·크래시·백그라운드작업 중 종료)로 원본 보존·요약이 안 된 직전 세션을
+// SessionStart에서 자동 복구한다.
+//   ★ 게이트: 먼저 내용을 읽지 않고 'stat'만으로 "새 미저장 세션이 있는지" 싸게 판정한다. 정상 종료라
+//     직전 세션이 이미 raw/summary에 저장돼 있으면 → 여기서 즉시 반환(전체 스캔·256KB 읽기 안 함).
+//   실제로 미저장 세션이 감지될 때만(=실패 경로) 전체 스캔을 돌려:
+//     (1) sessions/raw 에 원본 복사(멱등) — 원본은 절대 유실되지 않는다.
+//     (2) 그중 '요약 안 된 가장 최근 1개'를 워커로 증류 트리거 → 다음 세션 시작 시 요약 주입.
+// 절대 throw 하지 않는다(세션 시작 방해 금지). 증류 트리거한 orphan을 반환, 없으면 null.
+function backfillOrphans(projectDir, currentSid) {
+  try {
+    const sdir = path.join(projectDir, 'sessions');
+    const summaryDir = path.join(sdir, 'summary');
+    const rawDir = path.join(sdir, 'raw');
+    const projectsRoot = path.join(process.env.USERPROFILE || process.env.HOME || '', '.claude', 'projects');
+    if (!fs.existsSync(projectsRoot)) return null;
+    const now = Date.now();
+    const MAXAGE = 72 * 3600 * 1000;
+    const curLc = currentSid ? String(currentSid).toLowerCase() : '';
+
+    // ── 싼 게이트 (stat만, 내용 안 읽음) ──
+    // 이 git 루트의 프로젝트 dir만 본다: C:\Dev\SAAH → "C--Dev-SAAH" 및 그 하위(C--Dev-SAAH-*).
+    // Claude Code는 경로의 영숫자 외 문자를 '각각' '-'로 치환(연속도 collapse 안 함)하므로 동일 규칙으로 인코딩한다.
+    const encodedRoot = projectDir.replace(/[^a-zA-Z0-9]/g, '-');
+    const matchDir = (n) => n === encodedRoot || n.startsWith(encodedRoot + '-');
+    const candDirs = [];
+    let newestTx = 0; // 현재 세션 제외, 최근 transcript의 최신 mtime
+    for (const pd of fs.readdirSync(projectsRoot)) {
+      if (!matchDir(pd)) continue;
+      const dir = path.join(projectsRoot, pd);
+      let dst; try { dst = fs.statSync(dir); } catch { continue; }
+      if (!dst.isDirectory()) continue;
+      candDirs.push(dir);
+      for (const f of fs.readdirSync(dir)) {
+        if (!f.endsWith('.jsonl')) continue;
+        if (curLc && f.slice(0, -6).toLowerCase() === curLc) continue;
+        let st; try { st = fs.statSync(path.join(dir, f)); } catch { continue; }
+        if (now - st.mtimeMs > MAXAGE) continue;
+        if (st.mtimeMs > newestTx) newestTx = st.mtimeMs;
+      }
+    }
+    if (!newestTx) return null; // 최근 후보 없음
+    let newestSaved = 0; // 이미 저장된(raw/summary) 최신 mtime
+    for (const d of [rawDir, summaryDir]) {
+      if (!fs.existsSync(d)) continue;
+      for (const f of fs.readdirSync(d)) { let st; try { st = fs.statSync(path.join(d, f)); } catch { continue; } if (st.mtimeMs > newestSaved) newestSaved = st.mtimeMs; }
+    }
+    if (newestTx <= newestSaved) return null; // 정상 — 새 미저장 세션 없음 → 전체 스캔 생략(비용 0)
+
+    // ── 여기부터는 미저장 세션이 감지됐을 때만 (실패 경로) ──
+    const distilling = fs.existsSync(path.join(sdir, '.distilling')); // 증류 중이면 신규 증류만 보류(raw 복사는 계속)
+    const sidRe = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    const ts = (ms) => { const n = new Date(ms); const p = x => String(x).padStart(2, '0'); return `${n.getFullYear()}_${p(n.getMonth() + 1)}_${p(n.getDate())}__${p(n.getHours())}.${p(n.getMinutes())}`; };
+    const summarized = new Set();
+    for (const d of [summaryDir, path.join(summaryDir, '_archive')]) {
+      if (!fs.existsSync(d)) continue;
+      for (const f of fs.readdirSync(d)) { const m = f.match(sidRe); if (m) summarized.add(m[0].toLowerCase()); }
+    }
+    const rawSaved = new Set();
+    if (fs.existsSync(rawDir)) for (const f of fs.readdirSync(rawDir)) { const m = f.match(sidRe); if (m) rawSaved.add(m[0].toLowerCase()); }
+    const norm = (p) => { try { return path.resolve(p).replace(/\\/g, '/').toLowerCase(); } catch (e) { return String(p).toLowerCase(); } };
+    const pdNorm = norm(projectDir);
+    let best = null;
+    for (const dir of candDirs) {
+      for (const f of fs.readdirSync(dir)) {
+        if (!f.endsWith('.jsonl')) continue;
+        const sid = f.slice(0, -6); const sidLc = sid.toLowerCase();
+        if (curLc && sidLc === curLc) continue; // 현재 세션 제외(미완)
+        const fp = path.join(dir, f);
+        let fst; try { fst = fs.statSync(fp); } catch { continue; }
+        if (now - fst.mtimeMs > MAXAGE) continue;
+        // 앞부분(256KB)만 읽어 cwd + 인터랙티브(user≥2) 판정
+        const head = readHead(fp, 262144);
+        let cwd = '', users = 0;
+        for (const ln of head.split('\n')) {
+          const s = ln.trim(); if (!s) continue;
+          let o; try { o = JSON.parse(s); } catch { continue; }
+          if (!cwd && o.cwd) cwd = o.cwd;
+          if (o.type === 'user') users++;
+        }
+        if (!cwd || users < 2) continue; // 짧은 단발/워커/서브에이전트 세션 제외
+        if (norm(gitRootOf(cwd) || cwd) !== pdNorm) continue; // 이 git 루트 소속만(정규화 비교)
+        // (1) raw 원본 복사 — 멱등(이미 있으면 스킵)
+        if (!rawSaved.has(sidLc)) {
+          try {
+            if (!fs.existsSync(rawDir)) fs.mkdirSync(rawDir, { recursive: true });
+            fs.copyFileSync(fp, path.join(rawDir, `${ts(fst.mtimeMs)}_${sid}.jsonl`));
+            rawSaved.add(sidLc);
+          } catch (e) {}
+        }
+        // (2) 증류 후보 — 요약 안 된 것 중 가장 최근 1개
+        if (!summarized.has(sidLc) && (!best || fst.mtimeMs > best.mtime)) best = { fp, sid, mtime: fst.mtimeMs };
+      }
+    }
+    if (distilling || !best) return null; // 증류 중이거나 미요약 고아 없음 — raw 보존만 하고 종료
+    if (!fs.existsSync(sdir)) fs.mkdirSync(sdir, { recursive: true });
+    fs.writeFileSync(path.join(sdir, '.distilling'), String(now));
+    const worker = path.join(__dirname, 'wiki-distill-worker.js');
+    const child = require('child_process').spawn(process.execPath, [worker, best.fp, projectDir, best.sid], {
+      detached: true, stdio: 'ignore', windowsHide: true,
+      env: { ...process.env, CLAUDE_WIKI_CHILD: '1' }
+    });
+    child.unref();
+    return best;
+  } catch (e) { return null; }
+}
 
 let buf = '';
 let done = false;
@@ -36,7 +155,11 @@ function finish() {
     if (source === 'resume') return process.exit(0); // resume은 Claude Code가 그 세션 전체를 네이티브 로드 — 중복/오염 주입 금지
 
     const cwd = d.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
-    const sessionsDir = path.join(cwd, 'sessions');
+    // 하위 폴더(예: SAAH/guide)에서 켜도 git 루트 한 곳에서 읽는다 — 저장 훅과 동일 기준. (PO 지시 2026-06-26)
+    const projectDir = gitRootOf(cwd) || cwd;
+    const sessionsDir = path.join(projectDir, 'sessions');
+    // 안전망: 직전 세션이 SessionEnd 미발화로 요약 안 됐으면 여기서 자동 증류 트리거(백필). (PO 지시 2026-06-26)
+    const backfilled = backfillOrphans(projectDir, d.session_id);
     const summaryDir = path.join(sessionsDir, 'summary');
     const wikiDir = path.join(sessionsDir, 'wiki');
 
@@ -122,7 +245,9 @@ function finish() {
       recent: '=== 같은 디렉토리 최근 세션 (다른 걸 이어가려면 지목하세요) ===',
       footer: '(이어서 작업하려면 위 요약을 참고하고, 더 깊은 맥락은 위키 항목이나 sessions/raw 원본을 필요한 만큼만 읽으세요.)',
       rawHead: '=== 직전 세션 원본 있음 (아직 요약/위키 없음) ===',
-      rawBody: '이어서 작업하려면 필요한 부분만 읽으세요: '
+      rawBody: '이어서 작업하려면 필요한 부분만 읽으세요: ',
+      backfillHead: '=== 직전 세션이 정상 저장되지 않아 자동 복구를 시작했습니다 (완료 시 다음 세션부터 요약 주입) ===',
+      backfillBody: '지금 바로 직전 맥락이 필요하면 원본을 필요한 만큼만 읽으세요: '
     } : {
       summary: '=== Previous session handoff summary (auto-injected) ===',
       degraded: '(Note: this summary was auto-distilled at low quality — check the sessions/raw original.)',
@@ -131,7 +256,9 @@ function finish() {
       recent: '=== Other recent sessions in this directory (name one to continue it instead) ===',
       footer: '(To continue, use the summary above; read the wiki notes or sessions/raw originals only as needed.)',
       rawHead: '=== Previous session raw transcript available (no summary/wiki yet) ===',
-      rawBody: 'Read only the parts you need to continue: '
+      rawBody: 'Read only the parts you need to continue: ',
+      backfillHead: '=== Previous session was not saved cleanly — auto-recovery started (its summary injects from next start) ===',
+      backfillBody: 'If you need the previous context right now, read only what you need from the original: '
     };
 
     const out = [];
@@ -150,6 +277,12 @@ function finish() {
         const br = o.branch && o.branch !== 'unknown' ? ` (${o.branch})` : '';
         out.push(`- [${id}] ${o.title || o.f}${br}`);
       }
+    }
+
+    // 백필을 트리거했으면 복구 알림을 맨 앞에 덧붙인다 (요약이 있든 없든).
+    if (backfilled) {
+      out.unshift(L.backfillBody + backfilled.fp);
+      out.unshift(L.backfillHead);
     }
 
     if (out.length) {
