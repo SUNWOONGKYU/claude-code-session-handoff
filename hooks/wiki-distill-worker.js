@@ -26,7 +26,7 @@ const { spawn } = require('child_process');
 
 // 인프라 실패(구독 한도 소진·인증 오류 등)는 '내용 요약 실패'가 아니라 '일시적 장애'다.
 // 이 출력을 요약으로 저장하면 안 된다 — orphan으로 남겨 한도 회복 후 백필이 재증류한다. (2026-06-26 하드닝)
-const INFRA_RE = /weekly limit|usage limit|hit your .{0,20}limit|rate limit|Invalid API key|Fix external API key|insufficient.{0,10}credit|connectors are disabled/i;
+const INFRA_RE = /weekly limit|usage limit|session limit|hit your .{0,20}limit|rate limit|Invalid API key|Fix external API key|insufficient.{0,10}credit|connectors are disabled|Not logged in|Please run \/login/i;
 const MAX_DEGRADED_RETRIES = 2; // degraded 재증류 상한(백필 무한루프 방지). 같은 sid가 이 횟수까지 실패하면 포기.
 const isInfraError = (t) => !!t && INFRA_RE.test(t);
 
