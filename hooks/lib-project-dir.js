@@ -84,4 +84,13 @@ function resolveProjectDir(cwd, transcriptPath) {
   }
 }
 
-module.exports = { resolveProjectDir, gitRootOf };
+// 세션 핸드오프 아카이브 앵커.
+//   ① git repo 안이면 그 루트(프로젝트별 분리 보존)
+//   ② 아니면 CLAUDE_SESSIONS_HOME(설정 시) — 비-git 폴더(바탕화면 등)에서 cwd가 흔들려도
+//      아카이브가 한 곳으로 고정된다(하위폴더 cd로 인한 sessions/sessions 중첩 방지)
+//   ③ 둘 다 없으면 cwd 폴백(기존 동작)
+function sessionsAnchor(cwd) {
+  return gitRootOf(cwd) || process.env.CLAUDE_SESSIONS_HOME || cwd;
+}
+
+module.exports = { resolveProjectDir, gitRootOf, sessionsAnchor };

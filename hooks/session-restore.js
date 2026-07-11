@@ -18,7 +18,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { gitRootOf } = require('./lib-project-dir');
+const { sessionsAnchor } = require('./lib-project-dir');
 
 // 파일 앞부분만 읽는다(대용량 transcript 전체 읽기 회피).
 function readHead(fp, n) {
@@ -82,7 +82,7 @@ function backfillOrphans(projectDir, currentSid) {
     }
 
     // ── 싼 게이트 (stat만, 내용 안 읽음) ──
-    // 이 git 루트의 프로젝트 dir만 본다: C:\Dev\SAAH → "C--Dev-SAAH" 및 그 하위(C--Dev-SAAH-*).
+    // 이 git 루트의 프로젝트 dir만 본다: C:\repo\project → "C--repo-project" 및 그 하위(C--repo-project-*).
     // Claude Code는 경로의 영숫자 외 문자를 '각각' '-'로 치환(연속도 collapse 안 함)하므로 동일 규칙으로 인코딩한다.
     const encodedRoot = projectDir.replace(/[^a-zA-Z0-9]/g, '-');
     const matchDir = (n) => n === encodedRoot || n.startsWith(encodedRoot + '-');
@@ -138,7 +138,7 @@ function backfillOrphans(projectDir, currentSid) {
           if (o.type === 'user') users++;
         }
         if (!cwd || users < 2) continue; // 짧은 단발/워커/서브에이전트 세션 제외
-        if (norm(gitRootOf(cwd) || cwd) !== pdNorm) continue; // 이 git 루트 소속만(정규화 비교)
+        if (norm(sessionsAnchor(cwd)) !== pdNorm) continue; // 이 앵커 소속만(정규화 비교)
         // (1) raw 원본 복사 — 멱등(이미 있으면 스킵)
         if (!rawSaved.has(sidLc)) {
           try {
@@ -184,7 +184,7 @@ function finish() {
 
     const cwd = d.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
     // 하위 폴더(예: SAAH/guide)에서 켜도 git 루트 한 곳에서 읽는다 — 저장 훅과 동일 기준. (PO 지시 2026-06-26)
-    const projectDir = gitRootOf(cwd) || cwd;
+    const projectDir = sessionsAnchor(cwd);
     const sessionsDir = path.join(projectDir, 'sessions');
     // 안전망: 직전 세션이 SessionEnd 미발화로 요약 안 됐으면 여기서 자동 증류 트리거(백필). (PO 지시 2026-06-26)
     const backfilled = backfillOrphans(projectDir, d.session_id);

@@ -13,7 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { gitRootOf } = require('./lib-project-dir');
+const { sessionsAnchor } = require('./lib-project-dir');
 
 // '작업 중이던 그 세션'만 저장하기 위한 판별 (요건: 다른 세션 섞임 차단).
 // 마이두(mydoo) 환경에서는 진짜 대화도 entrypoint='sdk-cli', promptSource 없음 → 그 기준 사용 불가.
@@ -59,7 +59,7 @@ function finish() {
 
     // git 루트 한 곳에 요약·위키를 저장한다 — 하위 폴더(예: SAAH/guide)에서 켜도 통일.
     // 복원 훅(session-restore.js)과 동일 기준이어야 새 세션이 같은 곳에서 읽는다. (PO 지시 2026-06-26)
-    const projectDir = gitRootOf(cwd) || cwd;
+    const projectDir = sessionsAnchor(cwd);
 
     // cloop 재접속이 증류 완료를 기다리도록 '진행중' 마커 생성 (워커가 끝나면 제거).
     // 이게 없으면 cloop이 5초 만에 재접속해 새 세션이 아직 안 만들어진 요약을 못 읽는다.

@@ -15,7 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { gitRootOf } = require('./lib-project-dir');
+const { sessionsAnchor } = require('./lib-project-dir');
 
 let buf = '';
 let done = false;
@@ -49,7 +49,7 @@ function finish() {
     }
 
     // git 루트 한 곳에 저장한다 — 하위 폴더에서 켜도 통일. 복원 훅과 동일 기준. (PO 지시 2026-06-26)
-    const projectDir = gitRootOf(cwd) || cwd;
+    const projectDir = sessionsAnchor(cwd);
 
     const rawDir = path.join(projectDir, 'sessions', 'raw');
     ensureDir(rawDir);
