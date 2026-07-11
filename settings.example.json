@@ -1,9 +1,5 @@
 {
   "_설명": "기존 ~/.claude/settings.json 의 hooks 안에 아래 SessionStart / SessionEnd 블록을 병합하세요. node 경로의 사용자명을 본인 환경에 맞게 수정.",
-  "_설명_env": "(선택) claude를 git repo가 아닌 폴더(예: Desktop)에서 켜서 쓴다면 아래 env 블록도 최상위 \"env\"에 병합하세요. CLAUDE_SESSIONS_HOME = 핸드오프를 모을 고정 폴더 절대경로. 없으면 cwd 폴백이라, 세션 중 하위 폴더로 cd한 뒤 재접속하면 sessions/sessions 중첩이 생길 수 있습니다. git repo 안에서만 쓰면 불필요(git 루트가 앵커).",
-  "env": {
-    "CLAUDE_SESSIONS_HOME": "C:/Users/<사용자명>/Desktop/sessions"
-  },
   "hooks": {
     "SessionStart": [
       {

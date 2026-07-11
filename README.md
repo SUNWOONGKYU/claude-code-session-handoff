@@ -52,7 +52,7 @@ auto-injects the latest summary + last wiki note + index. Built from `SessionEnd
 
 자세한 설명: [`docs/세션훅_설명서.md`](docs/세션훅_설명서.md)
 
-> 📍 **저장 위치 = 앵커 `sessionsAnchor(cwd)`**: `sessions/`는 앵커 우선순위 ① 켠 폴더(cwd)의 **git 루트**(`gitRootOf`) → ② `CLAUDE_SESSIONS_HOME`(env, 설정 시) → ③ cwd 폴백 순으로 결정됩니다(`lib-project-dir.js`). git repo 안이면 하위 폴더에서 켜도 한 곳으로 모입니다(예: `C:\repo\sub`에서 켜도 `C:\repo\sessions\`). **저장 훅과 복원 훅이 모두 같은 앵커를 쓰므로 항상 같은 곳을 읽고 씁니다.** git repo가 아닌 폴더(예: Desktop)에서 쓸 땐 `CLAUDE_SESSIONS_HOME`을 설정하세요 — 없으면 cwd 폴백이라, 세션 중 하위 폴더로 `cd`한 뒤 재접속하면 `sessions/sessions` 중첩 트리가 생길 수 있습니다.
+> 📍 **저장 위치 = 앵커 `sessionsAnchor(cwd)`**: `sessions/`는 ① 켠 폴더(cwd)의 **git 루트**(`gitRootOf`) → ② 비-git이면 cwd 로 결정됩니다(`lib-project-dir.js`). git repo 안이면 하위 폴더에서 켜도 한 곳으로 모입니다(예: `C:\repo\sub`에서 켜도 `C:\repo\sessions\`). **저장 훅과 복원 훅이 모두 같은 앵커를 쓰므로 항상 같은 곳을 읽고 씁니다.** 훅은 앵커 뒤에 `/sessions`를 붙이므로, cwd가 하필 `sessions` 아카이브 폴더 자신(또는 그 하위)이면 `sessions/sessions` 중첩이 생길 수 있는데, `sessionsAnchor`가 cwd 끝의 `sessions`를 벗겨 부모를 앵커로 삼아 이를 막습니다(자가 치유). 비-git은 cwd별로 분리 저장됩니다.
 
 > 🛟 **백필 안전망**: `/exit` 실패·크래시·백그라운드 작업 중 종료 등으로 `SessionEnd`가 안 떠 저장이 누락돼도, 다음 세션 시작 시 자동 복구합니다. `SessionStart`가 먼저 `stat`만으로(내용 안 읽음) "새 미저장 세션이 있는지" 싸게 확인하고(정상 종료 시엔 즉시 통과 → 상시 비용 0), 누락이 감지될 때만 원본을 `sessions/raw/`에 복사(멱등)하고 미요약 최신 1개를 백그라운드 증류합니다.
 
@@ -67,13 +67,11 @@ auto-injects the latest summary + last wiki note + index. Built from `SessionEnd
 `hooks/` 의 5개 파일을 `C:\Users\<사용자명>\.claude\hooks\` 로 복사:
 `session-save-raw.js` · `session-restore.js` · `session-to-wiki.js` · `wiki-distill-worker.js` · `lib-project-dir.js`
 
-> `lib-project-dir.js` 는 저장 위치 앵커 `sessionsAnchor`(git 루트 → `CLAUDE_SESSIONS_HOME` → cwd) 헬퍼(세 훅 모두 require). 빠뜨리지 말고 함께 복사하세요.
+> `lib-project-dir.js` 는 저장 위치 앵커 `sessionsAnchor`(git 루트, 없으면 cwd; cwd가 `sessions` 폴더면 부모로) 헬퍼(세 훅 모두 require). 빠뜨리지 말고 함께 복사하세요.
 
 ### 2) settings.json 병합
 `~/.claude/settings.json` 의 `"hooks"` 에 [`settings.example.json`](settings.example.json) 의
 `SessionStart` / `SessionEnd` 블록을 병합.
-
-> **(선택) git repo가 아닌 폴더(예: Desktop)에서 claude를 켜서 쓴다면** `settings.example.json` 의 `env` 블록도 최상위 `"env"` 에 병합하고 `CLAUDE_SESSIONS_HOME` 을 핸드오프를 모을 고정 폴더 절대경로로 설정하세요. 없으면 cwd 폴백이라 세션 중 하위 폴더로 `cd` 후 재접속 시 `sessions/sessions` 중첩이 생길 수 있습니다. git repo 안에서만 쓰면 불필요.
 
 ### 3) 재접속 래퍼(`cloop`) 등록
 `powershell/profile-snippet.ps1` 의 `cloop` 함수를 PowerShell 프로필
@@ -105,7 +103,7 @@ auto-injects the latest summary + last wiki note + index. Built from `SessionEnd
 - 품질 자기검증: 마커 부족·빈 출력·타임아웃이면 **1회만 재시도**, 그래도 실패하면 폴백 + frontmatter에 `quality: degraded` 기록. 새 세션 복원 시 degraded면 "원본 확인 권장" 경고 한 줄을 함께 띄움.
 - 요약 retention: `summary/` 는 최신 10개만 두고 나머지는 `summary/_archive/` 로 **이동(삭제 아님)**. 개수는 워커의 `SUMMARY_KEEP` 상수로 조정.
 - INDEX 정합성: 갱신 시 실제 파일이 없는 `[[링크]]`(ghost)는 자동 제거(파일 자체는 안 건드림). 미색인 파일(orphan)은 로그만 남김.
-- 저장 위치 = 앵커 `sessionsAnchor(cwd)`: 우선순위 git 루트 → `CLAUDE_SESSIONS_HOME`(env) → cwd 폴백. 저장 2훅과 복원 1훅이 동일 앵커 → 항상 같은 곳을 읽고 씀. 비-git 폴더에서 cwd 폴백만 쓰면 하위 폴더로 `cd` 후 재접속 시 `sessions/sessions` 중첩이 생기므로, 그런 사용엔 `CLAUDE_SESSIONS_HOME` 로 고정 권장.
+- 저장 위치 = 앵커 `sessionsAnchor(cwd)`: git 루트, 없으면 cwd. 저장 2훅과 복원 1훅이 동일 앵커 → 항상 같은 곳을 읽고 씀. cwd가 `sessions` 폴더 자신(또는 하위)이면 부모로 기어올라 `sessions/sessions` 중첩 방지(자가 치유). 비-git은 cwd별 분리 저장.
 - 백필 안전망: `SessionEnd`가 안 떠도(크래시·강제종료 등) 다음 `SessionStart`에서 누락 세션의 raw 복사 + 미요약 최신 1개 증류. 싼 게이트(`stat`만)로 정상 종료 시엔 비용 0(스캔 안 함).
 - macOS/Linux는 `cloop`을 bash/zsh 함수로, 경로를 `~/.claude/...` 로 바꾸면 동일하게 동작.
 

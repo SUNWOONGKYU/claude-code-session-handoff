@@ -86,11 +86,20 @@ function resolveProjectDir(cwd, transcriptPath) {
 
 // 세션 핸드오프 아카이브 앵커.
 //   ① git repo 안이면 그 루트(프로젝트별 분리 보존)
-//   ② 아니면 CLAUDE_SESSIONS_HOME(설정 시) — 비-git 폴더(바탕화면 등)에서 cwd가 흔들려도
-//      아카이브가 한 곳으로 고정된다(하위폴더 cd로 인한 sessions/sessions 중첩 방지)
-//   ③ 둘 다 없으면 cwd 폴백(기존 동작)
+//   ② 비-git이면 cwd — 단, cwd가 'sessions' 아카이브 폴더 자신(또는 그 하위 sessions 중첩)이면
+//      기어올라 부모를 앵커로 삼는다. 훅이 앵커 뒤에 다시 '/sessions'를 붙이므로, cwd가 하필
+//      sessions 폴더면 sessions/sessions 중첩이 생기는 것을 이 가드가 막는다(자가 치유).
+// 프로젝트별 cwd 분리를 유지하므로 서로 다른 비-git 프로젝트의 요약이 한 폴더에 섞이지 않는다.
 function sessionsAnchor(cwd) {
-  return gitRootOf(cwd) || process.env.CLAUDE_SESSIONS_HOME || cwd;
+  const git = gitRootOf(cwd);
+  if (git) return git;
+  let d = cwd;
+  while (path.basename(d).toLowerCase() === 'sessions') {
+    const parent = path.dirname(d);
+    if (parent === d) break; // 루트 도달 — 무한루프 방지
+    d = parent;
+  }
+  return d;
 }
 
 module.exports = { resolveProjectDir, gitRootOf, sessionsAnchor };
