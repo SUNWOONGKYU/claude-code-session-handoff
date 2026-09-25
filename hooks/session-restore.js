@@ -52,18 +52,36 @@ function backfillOrphans(projectDir, currentSid) {
     const IN_PROGRESS_MS = 180000; // 최근 3분 내 수정된 트랜스크립트는 '진행중 라이브'로 보고 증류 보류(라이브 조기 증류 방지). (2026-06-26)
     const MAX_DEGRADED_RETRIES = 2; // degraded-only 세션 재증류 상한(무한루프 방지) — 워커와 동일.
     const curLc = currentSid ? String(currentSid).toLowerCase() : '';
+    // 라이브 판정 보강: 서브에이전트·긴 명령 대기 중엔 본 transcript가 수십 분 안 바뀐다 → mtime 3분 기준만으론
+    //   살아 있는 세션을 orphan으로 오인해 조기 증류했다(2026-09-25 23afef61 실측: transcript 11:24 정지, 훅은 11:37까지 발화).
+    //   hook-logger가 매 훅마다 쓰는 hooks_<sid>.log가 최근 15분 내 갱신됐고 마지막 이벤트가 SessionEnd가 아니면 라이브로 본다.
+    const LIVE_HOOK_MS = 15 * 60 * 1000;
+    const hookDir = path.join(require('os').tmpdir(), 'claude-statusline');
+    const liveByHooks = (sid) => {
+      try {
+        const fp = path.join(hookDir, `hooks_${String(sid).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 80)}.log`);
+        const st = fs.statSync(fp);
+        if (now - st.mtimeMs > LIVE_HOOK_MS) return false;
+        const fd = fs.openSync(fp, 'r'); const n = Math.min(st.size, 512); const b = Buffer.alloc(n);
+        try { fs.readSync(fd, b, 0, n, st.size - n); } finally { fs.closeSync(fd); }
+        const last = b.toString('utf8').trim().split('\n').pop() || '';
+        return !/\tSessionEnd\b/.test(last);
+      } catch (e) { return false; }
+    };
     const sidRe = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
     // 요약 분류: 정상 요약된 sid(properlySummarized) vs degraded-only sid(아직 제대로 저장 안 됨).
     // degraded 파일만 있는 세션은 재증류 대상(상한까지) — degraded를 "요약됨"으로 보던 고착 버그 해제. (2026-06-26)
     const properlySummarized = new Set();
     const degradedRetries = new Map(); // sid → 최대 distill_retries
+    const latestSummaryMtime = new Map(); // sid → 정상 요약 중 가장 최근 mtime (PreCompact 스냅샷 이후 raw 갱신 감지용)
     for (const d of [summaryDir, path.join(summaryDir, '_archive')]) {
       if (!fs.existsSync(d)) continue;
       for (const f of fs.readdirSync(d)) {
         const m = f.match(sidRe); if (!m || !f.endsWith('.md')) continue;
         const sidLc = m[0].toLowerCase();
-        let txt = ''; try { txt = fs.readFileSync(path.join(d, f), 'utf8'); } catch (e) {}
+        const full = path.join(d, f);
+        let txt = ''; try { txt = fs.readFileSync(full, 'utf8'); } catch (e) {}
         // ★ frontmatter 블록만 검사 — 본문이 "quality: degraded"를 언급해도(이 주제처럼) 오판 금지.
         const fmM = txt.match(/^---\n([\s\S]*?)\n---/);
         const fm = fmM ? fmM[1] : '';
@@ -73,6 +91,7 @@ function backfillOrphans(projectDir, currentSid) {
           degradedRetries.set(sidLc, Math.max(degradedRetries.get(sidLc) || 0, n));
         } else {
           properlySummarized.add(sidLc); // 정상 요약 1개라도 있으면 완료로 본다
+          try { const mt = fs.statSync(full).mtimeMs; latestSummaryMtime.set(sidLc, Math.max(latestSummaryMtime.get(sidLc) || 0, mt)); } catch (e) {}
         }
       }
     }
@@ -82,7 +101,7 @@ function backfillOrphans(projectDir, currentSid) {
     }
 
     // ── 싼 게이트 (stat만, 내용 안 읽음) ──
-    // 이 git 루트의 프로젝트 dir만 본다: C:\repo\project → "C--repo-project" 및 그 하위(C--repo-project-*).
+    // 이 git 루트의 프로젝트 dir만 본다: C:\Dev\SAAH → "C--Dev-SAAH" 및 그 하위(C--Dev-SAAH-*).
     // Claude Code는 경로의 영숫자 외 문자를 '각각' '-'로 치환(연속도 collapse 안 함)하므로 동일 규칙으로 인코딩한다.
     const encodedRoot = projectDir.replace(/[^a-zA-Z0-9]/g, '-');
     const matchDir = (n) => n === encodedRoot || n.startsWith(encodedRoot + '-');
@@ -100,16 +119,39 @@ function backfillOrphans(projectDir, currentSid) {
         let st; try { st = fs.statSync(path.join(dir, f)); } catch { continue; }
         if (now - st.mtimeMs > MAXAGE) continue;
         if (now - st.mtimeMs < IN_PROGRESS_MS) continue; // 진행중 라이브 — 게이트 계산서 제외(조기 증류 방지)
+        if (liveByHooks(f.slice(0, -6))) continue; // 훅이 아직 발화 중인 라이브 세션
         if (st.mtimeMs > newestTx) newestTx = st.mtimeMs;
       }
     }
-    if (!newestTx && degradedRetryable.size === 0) return null; // 최근 후보·재증류 대상 둘 다 없음
+    // raw는 있는데 요약이 한 번도 안 된 세션(증류 실패 orphan) — 파일명 sid만 비교(내용 안 읽음).
+    //   구 게이트는 "최신 transcript mtime vs 최신 raw/summary mtime"만 봐서, orphan 뒤에 다른 세션이 하나라도
+    //   정상 저장되면 그 orphan을 영영 재시도하지 않았다(2026-09-24 23:17 7cd535a3 유실 사고). (2026-09-25)
+    // 시도 장부 — 워커가 sid마다 시도 횟수를 센다. 상한 도달 sid는 게이트·후보에서 뺀다(무한 재증류 방지).
+    //   비대상(단발·워커 자식)으로 판정된 raw도 여기에 상한값으로 기록해 매 시작마다 전체 스캔을 다시 돌지 않게 한다.
+    const MAX_ATTEMPTS = 4;
+    const attemptsFile = path.join(sdir, '.distill-attempts.json');
+    let attempts = {}; try { attempts = JSON.parse(fs.readFileSync(attemptsFile, 'utf8')) || {}; } catch (e) {}
+    let attemptsDirty = false;
+    const exhausted = (sidLc) => (attempts[sidLc] || 0) >= MAX_ATTEMPTS;
+    const unsummarizedRaw = new Set();
+    if (fs.existsSync(rawDir)) {
+      for (const f of fs.readdirSync(rawDir)) {
+        const m = f.match(sidRe); if (!m || !f.endsWith('.jsonl')) continue;
+        const sidLc = m[0].toLowerCase();
+        if (sidLc === curLc || properlySummarized.has(sidLc) || degradedRetries.has(sidLc)) continue; // degraded는 degradedRetryable이 담당
+        if (exhausted(sidLc)) continue; // 시도 상한 도달 또는 비대상 판정
+        let st; try { st = fs.statSync(path.join(rawDir, f)); } catch { continue; }
+        if (now - st.mtimeMs > MAXAGE) continue;
+        unsummarizedRaw.add(sidLc);
+      }
+    }
+    if (!newestTx && degradedRetryable.size === 0 && unsummarizedRaw.size === 0) return null; // 최근 후보·재증류 대상 없음
     let newestSaved = 0; // 이미 저장된(raw/summary) 최신 mtime
     for (const d of [rawDir, summaryDir]) {
       if (!fs.existsSync(d)) continue;
       for (const f of fs.readdirSync(d)) { let st; try { st = fs.statSync(path.join(d, f)); } catch { continue; } if (st.mtimeMs > newestSaved) newestSaved = st.mtimeMs; }
     }
-    if (newestTx <= newestSaved && degradedRetryable.size === 0) return null; // 정상 — 새 미저장·재증류 대상 없음 → 전체 스캔 생략
+    if (newestTx <= newestSaved && degradedRetryable.size === 0 && unsummarizedRaw.size === 0) return null; // 정상 — 새 미저장·재증류·orphan 없음 → 전체 스캔 생략
 
     // ── 여기부터는 미저장/재증류 세션이 감지됐을 때만 (실패 경로) ──
     const distilling = fs.existsSync(path.join(sdir, '.distilling')); // 증류 중이면 신규 증류만 보류(raw 복사는 계속)
@@ -128,16 +170,25 @@ function backfillOrphans(projectDir, currentSid) {
         let fst; try { fst = fs.statSync(fp); } catch { continue; }
         if (now - fst.mtimeMs > MAXAGE) continue;
         if ((now - fst.mtimeMs) < IN_PROGRESS_MS) continue; // 진행중 라이브 세션 — raw 복사·증류 모두 보류(조기 증류 방지)
+        if (liveByHooks(sid)) continue; // 훅 발화 중 = 라이브(서브에이전트·긴 명령 대기) — 보류
         // 앞부분(256KB)만 읽어 cwd + 인터랙티브(user≥2) 판정
         const head = readHead(fp, 262144);
-        let cwd = '', users = 0;
+        let cwd = '', users = 0, workerChild = false;
         for (const ln of head.split('\n')) {
           const s = ln.trim(); if (!s) continue;
           let o; try { o = JSON.parse(s); } catch { continue; }
           if (!cwd && o.cwd) cwd = o.cwd;
-          if (o.type === 'user') users++;
+          if (o.type === 'user') {
+            // 증류 워커가 띄운 claude 자식 세션(첫 user = 증류 프롬프트)은 사용자 세션이 아니다 — raw 복사·증류 제외.
+            //   도구 호출이 섞이면 user≥2가 돼 예전엔 orphan으로 오인됐다(3b554e94). (2026-09-25)
+            if (users === 0) { const c = o.message && o.message.content; const t = typeof c === 'string' ? c : (Array.isArray(c) ? c.map(x => (x && x.text) || '').join('') : ''); if (/^The following input is a Claude Code session transcript/.test(t.trim())) workerChild = true; }
+            users++;
+          }
         }
-        if (!cwd || users < 2) continue; // 짧은 단발/워커/서브에이전트 세션 제외
+        if (!cwd || users < 2 || workerChild) { // 짧은 단발/워커/서브에이전트 세션 제외
+          if (!exhausted(sidLc)) { attempts[sidLc] = MAX_ATTEMPTS; attemptsDirty = true; } // 비대상 확정 — 다음부터 게이트서 제외
+          continue;
+        }
         if (norm(sessionsAnchor(cwd)) !== pdNorm) continue; // 이 앵커 소속만(정규화 비교)
         // (1) raw 원본 복사 — 멱등(이미 있으면 스킵)
         if (!rawSaved.has(sidLc)) {
@@ -147,12 +198,15 @@ function backfillOrphans(projectDir, currentSid) {
             rawSaved.add(sidLc);
           } catch (e) {}
         }
-        // (2) 증류 후보 — 정상 요약이 없는 것 중 가장 최근 1개. degraded-only는 상한 미달이면 재증류 포함.
+        // (2) 증류 후보 — 정상 요약이 없거나, 있어도 그보다 raw가 더 최신(=PreCompact 스냅샷 이후 세션이
+        //     더 진행되다 크래시)이면 재증류 대상. degraded-only는 상한 미달이면 재증류 포함.
         const hasDegraded = degradedRetries.has(sidLc);
-        const eligible = !properlySummarized.has(sidLc) && (!hasDegraded || degradedRetryable.has(sidLc));
-        if (eligible && (!best || fst.mtimeMs > best.mtime)) best = { fp, sid, mtime: fst.mtimeMs };
+        const summaryStale = properlySummarized.has(sidLc) && (latestSummaryMtime.get(sidLc) || 0) < fst.mtimeMs - 60000;
+        const eligible = (!properlySummarized.has(sidLc) || summaryStale) && (!hasDegraded || degradedRetryable.has(sidLc));
+        if (eligible && !exhausted(sidLc) && (!best || fst.mtimeMs > best.mtime)) best = { fp, sid, mtime: fst.mtimeMs };
       }
     }
+    if (attemptsDirty) { try { fs.writeFileSync(attemptsFile, JSON.stringify(attempts)); } catch (e) {} }
     if (distilling || !best) return null; // 증류 중이거나 미요약 고아 없음 — raw 보존만 하고 종료
     if (!fs.existsSync(sdir)) fs.mkdirSync(sdir, { recursive: true });
     fs.writeFileSync(path.join(sdir, '.distilling'), String(now));
@@ -186,6 +240,27 @@ function finish() {
     // 하위 폴더(예: SAAH/guide)에서 켜도 git 루트 한 곳에서 읽는다 — 저장 훅과 동일 기준. (PO 지시 2026-06-26)
     const projectDir = sessionsAnchor(cwd);
     const sessionsDir = path.join(projectDir, 'sessions');
+
+    // ── source=compact : 방금 컴팩션이 끝난 '같은 세션'의 재개 ── (2026-09-09)
+    // 여기서 평소의 '직전 세션 요약 + 위키 + 인덱스'를 주입하면 안 된다:
+    //   ① 그건 남의 세션 얘기라 지금 작업과 무관 — 오염
+    //   ② 방금 컴팩션으로 비운 컨텍스트를 도로 채우는 꼴 — 컴팩션 무력화
+    // 대신 PreCompact가 방금 만든 '이 세션의' 핸드오프만 주입한다.
+    if (source === 'compact') {
+      try {
+        const sid = String(d.session_id || '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 40);
+        const cf = path.join(sessionsDir, 'compact', `${sid}_핸드오프.md`);
+        if (sid && fs.existsSync(cf)) {
+          const body = fs.readFileSync(cf, 'utf8').replace(/^---\n[\s\S]*?\n---\n/, '').trim();
+          if (body) {
+            console.log('=== 컴팩트 직전 작업 상태 (자동 주입) ===\n' + body +
+              '\n---\n(위 내용은 방금 압축된 대화의 핸드오프입니다. 같은 세션의 연속 작업이니 이어서 진행하세요.)');
+          }
+        }
+      } catch (e) {}
+      return process.exit(0); // 백필·직전세션 주입 경로로는 절대 내려가지 않는다
+    }
+
     // 안전망: 직전 세션이 SessionEnd 미발화로 요약 안 됐으면 여기서 자동 증류 트리거(백필). (PO 지시 2026-06-26)
     const backfilled = backfillOrphans(projectDir, d.session_id);
     const summaryDir = path.join(sessionsDir, 'summary');
@@ -267,10 +342,51 @@ function finish() {
     let wikiBody = pickWiki ? fs.readFileSync(pickWiki.full, 'utf8').trim() : '';
     let indexBody = '';
     const indexFile = path.join(wikiDir, 'INDEX.md');
-    if (fs.existsSync(indexFile)) indexBody = fs.readFileSync(indexFile, 'utf8').trim();
+    if (fs.existsSync(indexFile)) {
+      // 주입은 최근 항목만 (파일 자체는 전체 이력 보존). 오래된 것은 INDEX.md 직접 참조.
+      const INDEX_KEEP = 8;
+      const raw = fs.readFileSync(indexFile, 'utf8').trim();
+      const lines = raw.split('\n');
+      const title = lines.find(l => l.startsWith('#')) || '# 위키 인덱스';
+      const bullets = lines.filter(l => l.trim().startsWith('- '));
+      const kept = bullets.slice(0, INDEX_KEEP);
+      const omitted = bullets.length - kept.length;
+      indexBody = [title, '', ...kept].join('\n');
+      if (omitted > 0) indexBody += `\n- … (오래된 ${omitted}개 생략 — sessions/wiki/INDEX.md 직접 참조)`;
+    }
 
     // 안전망: 같은 디렉토리의 다른 최근 세션 목록(주입된 것 제외) — 다른 걸 이어가려면 PO가 지목.
     const others = sums.filter(x => !pickSum || x.f !== pickSum.f).slice(0, 5);
+
+    // ── 신선도 검사 ──
+    // 사고: SessionEnd 증류는 비동기 워커(통상 60~120초)다. 그게 끝나기 전에 새 세션을 열면
+    //   그 시점의 '가장 최신 요약'은 직전 세션이 아니라 전전 세션 것이고, 새 세션은 그걸 직전으로 믿는다.
+    //   실측(2026-08-16): 종료 16:21:46 → 새 세션 시작 16:22:12 → 요약 저장 16:23:09. 47초 차이로 오주입.
+    // 대응: 막지 않고(시작 지연 금지) 경고를 맨 앞에 붙여, 요약을 '직전'으로 단정하지 못하게 한다.
+    // 감지 둘 — (1) .distilling 마커 = 증류 진행 중, (2) raw가 최신 요약보다 새로움 = 증류 실패/미완.
+    const staleness = (() => {
+      try {
+        const pickMs = pickSum ? pickSum.m : 0;
+        let inflight = false;
+        const marker = path.join(sessionsDir, '.distilling');
+        if (fs.existsSync(marker)) {
+          try { inflight = (Date.now() - fs.statSync(marker).mtimeMs) < 30 * 60 * 1000; } catch (e) {}
+        }
+        let newestRaw = null;
+        const rd = path.join(sessionsDir, 'raw');
+        if (fs.existsSync(rd)) {
+          for (const f of fs.readdirSync(rd)) {
+            if (!f.endsWith('.jsonl')) continue;
+            let st; try { st = fs.statSync(path.join(rd, f)); } catch (e) { continue; }
+            if (!newestRaw || st.mtimeMs > newestRaw.m) newestRaw = { fp: path.join(rd, f), m: st.mtimeMs };
+          }
+        }
+        // 60초 여유 — 요약이 raw보다 조금 늦게 쓰이는 정상 순서를 오탐하지 않는다.
+        const rawNewer = !!(newestRaw && newestRaw.m > pickMs + 60000);
+        if (!inflight && !rawNewer) return null;
+        return { raw: newestRaw ? newestRaw.fp : '' };
+      } catch (e) { return null; }
+    })();
 
     // 라벨 언어는 '주입 내용'의 언어를 따라간다 — 한글이 있으면 한국어, 없으면 영어.
     const ko = /[가-힣]/.test(summaryBody || wikiBody || indexBody || '');
@@ -284,7 +400,9 @@ function finish() {
       rawHead: '=== 직전 세션 원본 있음 (아직 요약/위키 없음) ===',
       rawBody: '이어서 작업하려면 필요한 부분만 읽으세요: ',
       backfillHead: '=== 직전 세션이 정상 저장되지 않아 자동 복구를 시작했습니다 (완료 시 다음 세션부터 요약 주입) ===',
-      backfillBody: '지금 바로 직전 맥락이 필요하면 원본을 필요한 만큼만 읽으세요: '
+      backfillBody: '지금 바로 직전 맥락이 필요하면 원본을 필요한 만큼만 읽으세요: ',
+      staleHead: '=== ⚠ 경고: 직전 세션 요약이 아직 준비되지 않았습니다 — 아래 주입된 요약은 "직전"이 아닐 수 있습니다 ===',
+      staleBody: '직전 세션 증류가 진행 중이거나 실패했습니다. 아래 요약을 직전 세션으로 단정하지 말고, sessions/summary/ 와 sessions/wiki/ 의 파일 목록을 직접 확인해 더 최신 파일이 있는지 보세요(증류는 보통 1~2분 내 완료). 직전 세션 원본: '
     } : {
       summary: '=== Previous session handoff summary (auto-injected) ===',
       degraded: '(Note: this summary was auto-distilled at low quality — check the sessions/raw original.)',
@@ -295,7 +413,9 @@ function finish() {
       rawHead: '=== Previous session raw transcript available (no summary/wiki yet) ===',
       rawBody: 'Read only the parts you need to continue: ',
       backfillHead: '=== Previous session was not saved cleanly — auto-recovery started (its summary injects from next start) ===',
-      backfillBody: 'If you need the previous context right now, read only what you need from the original: '
+      backfillBody: 'If you need the previous context right now, read only what you need from the original: ',
+      staleHead: '=== ⚠ WARNING: the previous session\'s summary is not ready yet — the summary injected below may NOT be the previous session ===',
+      staleBody: 'Distillation is still running or failed. Do not assume the summary below is the previous session; list sessions/summary/ and sessions/wiki/ yourself to check for a newer file (distillation usually finishes within 1-2 minutes). Previous session raw transcript: '
     };
 
     const out = [];
@@ -320,6 +440,12 @@ function finish() {
     if (backfilled) {
       out.unshift(L.backfillBody + backfilled.fp);
       out.unshift(L.backfillHead);
+    }
+
+    // 신선도 경고는 가장 위 — 아래 요약을 읽기 전에 먼저 보이게 한다.
+    if (staleness) {
+      out.unshift(L.staleBody + (staleness.raw || 'sessions/raw/'));
+      out.unshift(L.staleHead);
     }
 
     if (out.length) {
